@@ -33,7 +33,12 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
     demFile = "./data/dem_bendigo.tif" 
     ndviFile = "./data/NDVI_Bendigo_2023.tif" 
     gtfs_feed = "./data/gtfs.zip"
-    
+    # city-specific data
+    bendigoParking <- "./data/CoGB_Parking_GIS_Layers_GDA2020Z55_20240222.zip"
+    bendigoParkingPoly <- "/CoGB_Parking_Polygons_GDA2020Z55_20240222.shp"
+    bendigoParkingLine <- "/CoGB_Parking_Lines_GDA2020Z55_20240222.shp"
+    bendigoBikeRacks <- "./data/Bike Racks_v1.2.csv"
+
   } else if (city == "Melbourne") {
     region = "./data/greater_melbourne.sqlite"
     outputCrs = 7899
@@ -293,6 +298,16 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   
   # adding destinations layer
   if (addDestinationLayer) {
+    if (city == "Bendigo") {
+      localDestinations <- getDestinationsBendigo(bendigoParking,
+                                                  bendigoParkingPoly,
+                                                  bendigoParkingLine,
+                                                  bendigoBikeRacks,
+                                                  outputCrs)
+    } else {
+      localDestinations <- NULL
+    }
+    
     destinations <- addDestinations(networkDensified[[1]],
                                     networkDensified[[2]],
                                     osmGpkg,
@@ -300,7 +315,8 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
                                     gtfs_feed,
                                     outputCrs,
                                     region,
-                                    regionBufferDist)
+                                    regionBufferDist,
+                                    localDestinations)
   }
 
   # simplify geometry so all edges are straight lines
