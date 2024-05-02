@@ -319,14 +319,13 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
                                     localDestinations)
   }
 
-  # simplify geometry so all edges are straight lines
-  system.time(networkDirect <-
-                makeEdgesDirect(networkDensified[[1]],
-                                networkDensified[[2]],
-                                outputCrs))
+  # add node details to links
+  system.time(networkWithNodeDetails <-
+                addNodeDetails(networkDensified[[1]],
+                                networkDensified[[2]]))
   
   # add mode to edges, add type to nodes, change cycleway from numbers to text
-  networkRestructured <- restructureData(networkDirect, highway_lookup,
+  networkRestructured <- restructureData(networkWithNodeDetails, highway_lookup,
                                          defaults_df)
   
   # Doubling capacity for small road segments to avoid bottlenecks
