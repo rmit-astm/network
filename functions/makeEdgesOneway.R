@@ -62,7 +62,7 @@ makeEdgesOneway <- function(nodes_current, edges_current) {
       rename(slope_pct = fwd_slope_pct)
   }
   
-  # exclude 'is_oneway' from original edges, and bind with reversed two-way edges
+  # bind with reversed two-way edges
   edges_current <- edges_current %>%
     dplyr::select(all_of(required_fields)) %>%
     rbind(., edges_twoway_reversed)
