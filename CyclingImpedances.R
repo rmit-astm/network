@@ -105,7 +105,7 @@ addImpedancesLTSonlyAssumedTraffic <- function(input.network) {
 input.network.location <- "./output/generated_network/network.sqlite"
 network.with.LTS <- 
   addImpedancesLTSonlyAssumedTraffic(list(st_read(input.network.location, layer = "nodes"),
-                                          st_read(intput.network.location, layer = "links")))
+                                          st_read(input.network.location, layer = "links")))
 # write changed links back to location (no need to write nodes, they haven't changed)
 st_write(network.with.LTS[[2]], input.network.location, layer = "links", delete_layer = TRUE)
 
