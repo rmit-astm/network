@@ -79,33 +79,3 @@ addImpedances <- function() {
   st_write(networkWeighted[[2]], "./output/test/networkWeighted.sqlite", layer = "links")
   
 }
-
-
-# simplified version which only adds LTS, based on assumed traffic
-
-addImpedancesLTSonlyAssumedTraffic <- function(input.network) {
-  
-  # input.network <- networkOneway
-  
-  input.nodes <- input.network[[1]]
-  input.links <- input.network[[2]]
-  
-  input.links.with.assumed.traffic <- addAssumedTraffic(input.nodes,
-                                                        input.links)
-  
-  network.with.LTS <- addLTS(input.links.with.assumed.traffic[[1]],
-                             input.links.with.assumed.traffic[[2]])
-  
-  return(list(network.with.LTS[[1]],
-              network.with.LTS[[2]]))
-  
-}
-
-# running the simplified version on generated network
-input.network.location <- "./output/generated_network/network.sqlite"
-network.with.LTS <- 
-  addImpedancesLTSonlyAssumedTraffic(list(st_read(input.network.location, layer = "nodes"),
-                                          st_read(input.network.location, layer = "links")))
-# write changed links back to location (no need to write nodes, they haven't changed)
-st_write(network.with.LTS[[2]], input.network.location, layer = "links", delete_layer = TRUE)
-
