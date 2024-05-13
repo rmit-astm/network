@@ -42,7 +42,7 @@ makeEdgesOneway <- function(nodes_current, edges_current) {
   required_fields <- c("from_id", "to_id", "fromx", "fromy", "tox", "toy",
                        "length", "freespeed", "permlanes", "capacity", "highway",
                        "cycleway", "surface", "is_cycle", "is_walk", "is_car", 
-                       "modes", "tcc_buffer", "tcc_percent")
+                       "modes")
   if ("slope_pct" %in% colnames(edges_twoway_reversed)) {
     required_fields <- c(required_fields, "slope_pct")
   }
@@ -52,6 +52,10 @@ makeEdgesOneway <- function(nodes_current, edges_current) {
   ndvi_columns <- colnames(edges_twoway_reversed)[grep("ndvi", colnames(edges_twoway_reversed))]
   if (length(ndvi_columns) > 0) {
     required_fields <- c(required_fields, ndvi_columns)
+  }
+  tcc_columns <- colnames(edges_twoway_reversed)[grep("tcc", colnames(edges_twoway_reversed))]
+  if (length(tcc_columns) > 0) {
+    required_fields <- c(required_fields, tcc_columns)
   }
   edges_twoway_reversed <- edges_twoway_reversed %>%
     dplyr::select(all_of(required_fields))
