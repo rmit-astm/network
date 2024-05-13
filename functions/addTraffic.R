@@ -1,4 +1,4 @@
-# function to add traffic to network links
+# functions to add traffic to network links
 
 # assumes a network links file, and a second file which is the same (or, at 
 # least, contains the same links with the same 'from_id', 'to_id' and 
@@ -44,3 +44,28 @@ addTraffic <- function(network.nodes, network.links, traffic.links, multiplier =
   return(list(network.nodes, links.with.traffic))
   
 }
+
+
+# alternative function to add assumed traffic, where actual/simulated figures
+# aren't available, being the lowest volume for each category where used in 'addLTS.R'
+addAssumedTraffic <- function(network.nodes, network.links) {
+  
+  # road groups
+  local <- c("residential", "road", "unclassified", "living_street", "service")
+  tertiary <- c("tertiary", "tertiary_link")
+  secondary <- c("secondary", "secondary_link")
+  
+  # add assumed traffic - figures from 'addLTS.R' grid, divided by 2 because the grid
+  # uses 2-way traffic and these are figures applied to 1-way links
+  links.with.traffic <- network.links %>%
+    mutate(ADT = case_when(
+      highway %in% local     ~ 750 / 2,
+      highway %in% tertiary  ~ 3000 / 2,
+      highway %in% secondary ~ 10000 / 2,
+      TRUE                   ~ NA
+    ))
+  
+  return(list(network.nodes, links.with.traffic))
+}
+
+

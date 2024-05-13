@@ -10,6 +10,10 @@ makeEdgesOneway <- function(nodes_current, edges_current) {
   names.to.change <- c("fromX", "fromY", "toX", "toY")
   edges_current <- rename_with(edges_current, tolower, any_of(names.to.change))
   
+  # for two-way, divide permlanes by 2, rounded up (as they will be split into 2 * one-way)
+  edges_current <- edges_current %>%
+    mutate(permlanes = ifelse(is_oneway == 0, ceiling(permlanes / 2), permlanes))
+
   # select only two-way edges
   edges_twoway <- edges_current %>%
     filter(is_oneway == 0)
@@ -53,10 +57,6 @@ makeEdgesOneway <- function(nodes_current, edges_current) {
   if (length(ndvi_columns) > 0) {
     required_fields <- c(required_fields, ndvi_columns)
   }
-  tcc_columns <- colnames(edges_twoway_reversed)[grep("tcc", colnames(edges_twoway_reversed))]
-  if (length(tcc_columns) > 0) {
-    required_fields <- c(required_fields, tcc_columns)
-  }
   edges_twoway_reversed <- edges_twoway_reversed %>%
     dplyr::select(all_of(required_fields))
   
@@ -66,7 +66,7 @@ makeEdgesOneway <- function(nodes_current, edges_current) {
       rename(slope_pct = fwd_slope_pct)
   }
   
-  # exclude 'is_oneway' from original edges, and bind with reversed two-way edges
+  # bind with reversed two-way edges
   edges_current <- edges_current %>%
     dplyr::select(all_of(required_fields)) %>%
     rbind(., edges_twoway_reversed)
