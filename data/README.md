@@ -4,7 +4,7 @@ This directory contains input files required to generate MATSim networks for Ben
 
 ## Files to download
 
-Download the following files for the relevant network location.
+Download the following files (as required) for the relevant network location.
 
 ### Bendigo
 | File                     | Description                                       |
@@ -12,6 +12,7 @@ Download the following files for the relevant network location.
 | greater_bendigo.sqlite   | Boundary of the Greater Bendigo Local Government Area |
 | dem_bendigo.tif          | Digital elevation model data for the Greater Bendigo area |
 | NDVI_Bendigo_2023.tif    | NDVI data for the Greater Bendigo area              |
+| TCC_Bendigo_5m.tif       | Tree canopy data for the Greater Melbourne area   |
 | gtfs.zip                 | GTFS feed for Victoria as at 20 October 2023      |
 
 
