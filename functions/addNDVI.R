@@ -13,7 +13,7 @@ addNDVI2Links <- function(links, ndviFile, ndviBuffDist, outputCrs) {
   ndvi <- rast(ndviFile)
   outputCrsEPSG <- paste0("EPSG:", outputCrs)
   if (!same.crs(ndvi, outputCrsEPSG)) ndvi <- project(ndvi, outputCrsEPSG)
- 
+  
   # buffer each link
   links.buffered <- st_buffer(links, 30)
   
@@ -43,9 +43,9 @@ addNDVI2Links <- function(links, ndviFile, ndviBuffDist, outputCrs) {
     mutate(row_no = row_number()) %>%
     left_join(., ndvi_values_mean, by = c("row_no" = "ID")) %>%
     dplyr::select(-row_no)
-
+  
   # st_write(links.with.ndvi, "./SP_working/links_with_NDVI.sqlite", delete_layer = TRUE)
-
+  
   return(links.with.ndvi)
   
 }
