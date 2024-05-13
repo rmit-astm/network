@@ -57,6 +57,10 @@ makeEdgesOneway <- function(nodes_current, edges_current) {
   if (length(ndvi_columns) > 0) {
     required_fields <- c(required_fields, ndvi_columns)
   }
+  tcc_columns <- colnames(edges_twoway_reversed)[grep("tcc", colnames(edges_twoway_reversed))]
+  if (length(tcc_columns) > 0) {
+    required_fields <- c(required_fields, tcc_columns)
+  }
   edges_twoway_reversed <- edges_twoway_reversed %>%
     dplyr::select(all_of(required_fields))
   

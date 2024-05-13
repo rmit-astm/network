@@ -32,6 +32,7 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
     cropAreaPoly = ""  # must set 'crop2Area=F'
     demFile = "./data/dem_bendigo.tif" 
     ndviFile = "./data/NDVI_Bendigo_2023.tif" 
+    treeCanopyCoverFile = "./data/TCC_Bendigo_5m.tif" 
     gtfs_feed = "./data/gtfs.zip"
     # city-specific data
     bendigoParking <- "./data/CoGB_Parking_GIS_Layers_GDA2020Z55_20240222.zip"
@@ -47,6 +48,7 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
     cropAreaPoly = "city-of-melbourne_victoria"
     demFile = "./data/dem_melbourne.tif"
     ndviFile = "./data/NDVI_Melbourne_2023.tif"
+    treeCanopyCoverFile = ""  # 'addTreeCanopyCover' must be set to F
     gtfs_feed = "./data/gtfs.zip"
 
   } else {
@@ -95,10 +97,14 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
 
   # NDVI
   # A flag for whether to add NDVI or not
-  addNDVI=T
+  addNDVI=F
   # Buffer distance for finding average NDVI for links
   ndviBuffDist=30
 
+  # TREE CANOPY COVER
+  # A flag for whether to add tree canopy cover or not
+  addTreeCanopyCover = T
+  
   # GTFS
   # A flag for whether to add a network based on GTFS or not
   addGtfs=T
@@ -156,6 +162,7 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   echo(paste0("- Adding elevation:                               ", addElevation,"\n"))
   echo(paste0("- Adding destination layer:                       ", addDestinationLayer,"\n"))
   echo(paste0("- Adding NDVI:                                    ", addNDVI,"\n"))
+  echo(paste0("- Adding Tree Canopy Cover Percentage:            ", addTreeCanopyCover,"\n"))
   echo(paste0("- Adding PT from GTFS:                            ", addGtfs,"\n"))
   echo(paste0("- Writing outputs in SQLite format:               ", writeSqlite,"\n"))
   echo(paste0("- Writing outputs in ShapeFile format:            ", writeShp,"\n"))
@@ -294,6 +301,13 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
                                                        ndviFile,
                                                        ndviBuffDist,
                                                        outputCrs))
+  }
+  
+  # Adding Tree Canopy Cover Percentage to links
+  if(addTreeCanopyCover) {
+    system.time(networkDensified[[2]] <- addTreeCanopyCover2Links(networkDensified[[2]],
+                                                                  treeCanopyCoverFile,
+                                                                  outputCrs))
   }
   
   # adding destinations layer
