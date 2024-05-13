@@ -32,9 +32,13 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
     cropAreaPoly = ""  # must set 'crop2Area=F'
     demFile = "./data/dem_bendigo.tif" 
     ndviFile = "./data/NDVI_Bendigo_2023.tif" 
-    treeCanopyCoverFile = "./data/TCC_Bendigo_5m.tif" 
     gtfs_feed = "./data/gtfs.zip"
-    
+    # city-specific data
+    bendigoParking <- "./data/CoGB_Parking_GIS_Layers_GDA2020Z55_20240222.zip"
+    bendigoParkingPoly <- "/CoGB_Parking_Polygons_GDA2020Z55_20240222.shp"
+    bendigoParkingLine <- "/CoGB_Parking_Lines_GDA2020Z55_20240222.shp"
+    bendigoBikeRacks <- "./data/Bike Racks_v1.2.csv"
+
   } else if (city == "Melbourne") {
     region = "./data/greater_melbourne.sqlite"
     outputCrs = 7899
@@ -94,10 +98,7 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   addNDVI=T
   # Buffer distance for finding average NDVI for links
   ndviBuffDist=30
-  
-  # TREE CANOPY COVER
-  addTreeCanopyCover = T
-  
+
   # GTFS
   # A flag for whether to add a network based on GTFS or not
   addGtfs=T
@@ -132,7 +133,7 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   library(foreach)
   library(nngeo)
   library(igraph)
-  
+
   # Building the output folder structure ------------------------------------
   outputDir <- paste0("output/",outputSubdirectory)
   if(outputSubdirectory != "" & dir.exists(outputDir)) dir_delete(outputDir)
@@ -155,7 +156,6 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   echo(paste0("- Adding elevation:                               ", addElevation,"\n"))
   echo(paste0("- Adding destination layer:                       ", addDestinationLayer,"\n"))
   echo(paste0("- Adding NDVI:                                    ", addNDVI,"\n"))
-  echo(paste0("- Adding Tree Canopy Cover Percentage:            ", addTreeCanopyCover,"\n"))
   echo(paste0("- Adding PT from GTFS:                            ", addGtfs,"\n"))
   echo(paste0("- Writing outputs in SQLite format:               ", writeSqlite,"\n"))
   echo(paste0("- Writing outputs in ShapeFile format:            ", writeShp,"\n"))
@@ -296,15 +296,18 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
                                                        outputCrs))
   }
   
-  # Adding Tree Canopy Cover Percentage to links
-  if(addTreeCanopyCover) {
-    system.time(networkDensified[[2]] <- addTreeCanopyCover2Links(networkDensified[[2]],
-                                                                  treeCanopyCoverFile,
-                                                                  outputCrs))
-  }
-  
   # adding destinations layer
   if (addDestinationLayer) {
+    if (city == "Bendigo") {
+      localDestinations <- getDestinationsBendigo(bendigoParking,
+                                                  bendigoParkingPoly,
+                                                  bendigoParkingLine,
+                                                  bendigoBikeRacks,
+                                                  outputCrs)
+    } else {
+      localDestinations <- NULL
+    }
+    
     destinations <- addDestinations(networkDensified[[1]],
                                     networkDensified[[2]],
                                     osmGpkg,
@@ -312,17 +315,17 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
                                     gtfs_feed,
                                     outputCrs,
                                     region,
-                                    regionBufferDist)
+                                    regionBufferDist,
+                                    localDestinations)
   }
 
-  # simplify geometry so all edges are straight lines
-  system.time(networkDirect <-
-                makeEdgesDirect(networkDensified[[1]],
-                                networkDensified[[2]],
-                                outputCrs))
+  # add node details to links
+  system.time(networkWithNodeDetails <-
+                addNodeDetails(networkDensified[[1]],
+                                networkDensified[[2]]))
   
   # add mode to edges, add type to nodes, change cycleway from numbers to text
-  networkRestructured <- restructureData(networkDirect, highway_lookup,
+  networkRestructured <- restructureData(networkWithNodeDetails, highway_lookup,
                                          defaults_df)
   
   # Doubling capacity for small road segments to avoid bottlenecks
@@ -396,5 +399,5 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
 }
 
 ## JUST FOR TESTING
-##makeNetwork(city = "Bendigo")
-##makeNetwork(city = "Melbourne")
+makeNetwork(city = "Bendigo")
+makeNetwork(city = "Melbourne")

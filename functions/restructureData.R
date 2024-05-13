@@ -68,9 +68,8 @@ restructureData <- function(networkList, highway_lookup,
     dplyr::select(any_of(c("osm_id","from_id", "to_id", "fromX", "fromY", "toX", "toY",  
                            "length", "freespeed", "permlanes", "capacity",  
                            "highway", "is_oneway", "cycleway", "surface",
-                           "is_cycle", "is_walk", "is_car", "modes")),
-                  contains("ndvi"),
-                  contains("tcc")) %>%
+                           "is_cycle", "is_walk", "is_car", "modes")), 
+                  contains("ndvi")) %>%
     mutate(id=NA) %>%
     relocate(id)
 
