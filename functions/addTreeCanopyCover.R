@@ -16,7 +16,7 @@ addTreeCanopyCover2Links <- function(links, treeCanopyCoverFile, outputCrs) {
     highway_order == 21 ~ 2,
     highway_order %in% c(16, 18, 19, 20, 22) ~ 6,
     highway_order %in% c(13, 15, 17) ~ 8,
-    highway_order %in% c(5, 6, 12, 14) ~ 10,
+    highway_order %in% c(5, 6, 7, 12, 14) ~ 10,
     highway_order %in% c(4, 11) ~ 12.5,
     highway_order %in% c(3, 10) ~ 15,
     highway_order %in% c(2, 9) ~ 18,
