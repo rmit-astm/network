@@ -12,6 +12,7 @@ Download the following files for the relevant network location.
 | greater_bendigo.sqlite   | Boundary of the Greater Bendigo Local Government Area |
 | dem_bendigo.tif          | Digital elevation model data for the Greater Bendigo area |
 | NDVI_Bendigo_2023.tif    | NDVI data for the Greater Bendigo area              |
+| TCC_Bendigo_2023.tif     | Tree canopy cover data for the Greater Bendigo area |
 | gtfs.zip                 | GTFS feed for Victoria as at 20 October 2023      |
 
 
@@ -40,3 +41,5 @@ The file `data/data prep tools.R` contains:
 Those scripts may also be useful to generate similar data input files for other locations if required.
 
 The NDVI files were created from Sentinel 2 data using Google Earth Engine at https://code.earthengine.google.com/.
+
+The Tree canopy cover raster data was sourced from here: https://discover.data.vic.gov.au/dataset/vicmap-vegetation-tree-extent and then manually resampled to 5m spatial resolution and merged together, and clipped to the Greater Bendigo boundary plus 10km buffer
