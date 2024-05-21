@@ -44,7 +44,7 @@ makeDisplayLayers <- function() {
   
   speed_limit <- links %>%
     filter(!(highway %in% c("bus", "train"))) %>%
-    mutate(speed = freespeed * 3.6,
+    mutate(speed = round(freespeed * 3.6),
            speed_limit = case_when(
              speed <= 30 ~ "Up to 30 km/h",
              speed <= 40 ~ "> 30 km/h up to 40 km/h",
