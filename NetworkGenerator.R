@@ -39,6 +39,7 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
     bendigoParkingPoly <- "/CoGB_Parking_Polygons_GDA2020Z55_20240222.shp"
     bendigoParkingLine <- "/CoGB_Parking_Lines_GDA2020Z55_20240222.shp"
     bendigoBikeRacks <- "./data/Bike Racks_v1.2.csv"
+    bendigoEverydayRoutes <- "./data/cogb-cycling-everyday-rides.shz"
 
   } else if (city == "Melbourne") {
     region = "./data/greater_melbourne.sqlite"
@@ -391,6 +392,15 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
                                          onroadBus,
                                          city)) 
   }
+  
+  # Adding Bendigo 'everyday routes' status as an attribute to links
+  if (city == "Bendigo") {
+    networkOneway[[2]] <- addBendigoEverydayRoutes(networkOneway[[1]],
+                                                   networkOneway[[2]],
+                                                   bendigoEverydayRoutes,
+                                                   outputCrs)
+  }
+  
   
   networkFinal <- networkOneway
   

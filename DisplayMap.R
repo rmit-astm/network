@@ -42,6 +42,10 @@ makeDisplayLayers <- function() {
     filter(is_cycle == 1) %>%
     dplyr::select(cycleway)
   
+  everyday_ride_shared_paths <- links %>%
+    filter(bend_everyday_type == "Shared Path / Protected Cycleway") %>%
+    dplyr::select(shared_path = bend_everyday_type)
+  
   speed_limit <- links %>%
     filter(!(highway %in% c("bus", "train"))) %>%
     mutate(speed = round(freespeed * 3.6),
@@ -118,6 +122,7 @@ makeDisplayLayers <- function() {
   st_write(cycling_separated_lane, output.file, layer = "cycling_separated_lane", delete_layer = T)
   st_write(cycling_onroad_lane, output.file, layer = "cycling_onroad_lane", delete_layer = T)
   st_write(cycling_mixed_traffic, output.file, layer = "cycling_mixed_traffic", delete_layer = T)
+  st_write(everyday_ride_shared_paths, output.file, layer = "everyday_ride_shared_paths", delete_layer = T)
   st_write(speed_limit, output.file, layer = "speed_limit", delete_layer = T)
   st_write(lane_numbers, output.file, layer = "lane_numbers", delete_layer = T)
   st_write(slope, output.file, layer = "slope", delete_layer = T)
