@@ -103,7 +103,7 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
 
   # TREE CANOPY COVER
   # A flag for whether to add tree canopy cover or not
-  addTreeCanopyCover = T
+  addTreeCanopyCover=T
   
   # GTFS
   # A flag for whether to add a network based on GTFS or not
@@ -138,7 +138,6 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   library(parallel)
   library(foreach)
   library(nngeo)
-  library(igraph)
 
   # Building the output folder structure ------------------------------------
   outputDir <- paste0("output/",outputSubdirectory)
