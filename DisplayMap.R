@@ -24,16 +24,22 @@ makeDisplayLayers <- function() {
     )) %>%
     dplyr::select(highway_type)
   
-  cycleway_status <- links %>%
+  cycling_offroad_path <- links %>%
+    filter(cycleway %in% c("bikepath", "shared_path")) %>%
+    dplyr::select(cycleway)
+  
+  cycling_separated_lane <- links %>%
+    filter(cycleway == "separated_lane") %>%
+    dplyr::select(cycleway)
+  
+  cycling_onroad_lane <- links %>%
+    filter(cycleway == "simple_lane") %>%
+    dplyr::select(cycleway)
+  
+  cycling_mixed_traffic <- links %>%
     filter(!(highway %in% c("bus", "train"))) %>%
-    mutate(cycleway = case_when(
-      cycleway == "bikepath"       ~ "bikepath",
-      cycleway == "shared_path"    ~ "shared path",
-      cycleway == "separated_lane" ~ "separated lane",
-      cycleway == "simple_lane"    ~ "simple lane",
-      cycleway == "shared_street"  ~ "shared street",
-      TRUE                         ~ "none"
-    )) %>%
+    filter(!cycleway %in% c("bikepath", "shared_path", "separated_lane", "simple_lane")) %>%
+    filter(is_cycle == 1) %>%
     dplyr::select(cycleway)
   
   speed_limit <- links %>%
@@ -71,6 +77,16 @@ makeDisplayLayers <- function() {
     filter(!is.na(slope)) %>%
     dplyr::select(slope)
   
+  canopy_cover <- links %>%
+    filter(!(highway %in% c("bus", "train"))) %>%
+    mutate(canopy_cover = case_when(
+      tcc_percent <= 10 ~ "Up to 10%",
+      tcc_percent <= 25 ~ "> 10% up to 25%",
+      tcc_percent <= 50 ~ "> 25% up to 50%",
+      tcc_percent > 50  ~ "> 75%"
+    )) %>%
+    dplyr::select(canopy_cover)
+
   level_of_traffic_stress <- links %>%
     filter(!(highway %in% c("bus", "train"))) %>%
     mutate(lvl_traf_stress = as.character(lvl_traf_stress)) %>%
@@ -98,10 +114,14 @@ makeDisplayLayers <- function() {
   # write outputs
   output.file <- "./output/bendigo display.sqlite"
   st_write(highway_type, output.file, layer = "highway_type", delete_layer = T)
-  st_write(cycleway_status, output.file, layer = "cycleway_status", delete_layer = T)
+  st_write(cycling_offroad_path, output.file, layer = "cycling_offroad_path", delete_layer = T)
+  st_write(cycling_separated_lane, output.file, layer = "cycling_separated_lane", delete_layer = T)
+  st_write(cycling_onroad_lane, output.file, layer = "cycling_onroad_lane", delete_layer = T)
+  st_write(cycling_mixed_traffic, output.file, layer = "cycling_mixed_traffic", delete_layer = T)
   st_write(speed_limit, output.file, layer = "speed_limit", delete_layer = T)
   st_write(lane_numbers, output.file, layer = "lane_numbers", delete_layer = T)
   st_write(slope, output.file, layer = "slope", delete_layer = T)
+  st_write(canopy_cover, output.file, layer = "canopy_cover", delete_layer = T)
   st_write(level_of_traffic_stress, output.file, layer = "level_of_traffic_stress", delete_layer = T)
   st_write(public_transport, output.file, layer = "public_transport", delete_layer = T)
   st_write(intersection_type, output.file, layer = "intersection_type", delete_layer = T)
