@@ -240,49 +240,8 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
                                                                shortLinkLength,
                                                                outputCrs))
   
-  # Merge edges going between the same two nodes, picking the shortest geometry.
-  # * One-way edges going in the same direction will be merged
-  # * Pairs of one-way edges in opposite directions will be merged into a two-way edge.
-  # * Two-way edges will be merged regardless of direction.
-  # * One-way edges will NOT be merged with two-way edges.
-  # * Non-car edges do NOT count towards the merged lane count (permlanes)
-  system.time(edgesCombined <- combineRedundantEdges(intersectionsSimplified[[1]],
-                                                     intersectionsSimplified[[2]],
-                                                     outputCrs))
-  
-  # Merge one-way and two-way edges going between the same two nodes. In these 
-  # cases, the merged attributes will be two-way.
-  # This guarantees that there will only be a single edge between any two nodes.
-  system.time(combinedUndirectedAndDirected <- 
-                combineUndirectedAndDirectedEdges(edgesCombined[[1]],
-                                                  edgesCombined[[2]],
-                                                  outputCrs))
-  
-  # If there is a chain of edges between intersections, merge them together
-  system.time(edgesSimplified <- simplifyLines(combinedUndirectedAndDirected[[1]],
-                                               combinedUndirectedAndDirected[[2]]))
-  
-  # Remove dangles
-  system.time(noDangles <- removeDangles(edgesSimplified[[1]],edgesSimplified[[2]],
-                                         minDangleLinkLengh))
-  
-  # Do a second round of simplification.
-  system.time(edgesCombined2 <- combineRedundantEdges(noDangles[[1]],
-                                                      noDangles[[2]],
-                                                      outputCrs))
-  system.time(combinedUndirectedAndDirected2 <- 
-                combineUndirectedAndDirectedEdges(edgesCombined2[[1]],
-                                                  edgesCombined2[[2]],
-                                                  outputCrs))
-  
-  system.time(edgesSimplified2 <- simplifyLines(combinedUndirectedAndDirected2[[1]],
-                                                combinedUndirectedAndDirected2[[2]]))
-  system.time(edgesCombined3 <- combineRedundantEdges(edgesSimplified2[[1]],
-                                                      edgesSimplified2[[2]],
-                                                      outputCrs))
-  
-  networkMode <- addMode(edgesCombined3)
-  
+  networkMode <- addMode(intersectionsSimplified)
+
   # ensure transport is a directed routeable graph for each mode (i.e., connected
   # subgraph). The first function ensures a connected directed subgraph and the
   # second function ensures a connected subgraph but doesn't consider directionality.
