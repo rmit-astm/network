@@ -86,6 +86,57 @@ processOsmTags <- function(osm_df,this_defaults_df){
         newLanes = ifelse(df$is_oneway[1] == 0, df$permlanes[1] * 2, df$permlanes[1])
         df$permlanes[1] = newLanes
       }
+      
+      # Melbourne bike lane project details
+      # see https://wiki.openstreetmap.org/wiki/Melbourne_Bike_Lane_Project
+      
+      # cycleway:[side] tags - infrastructure type
+      ## empty vectors for the tags
+      bikelaneFwdLeft <- c()
+      bikelaneFwdRight <- c()
+      bikelaneRvsLeft <- c()
+      ## extract the tags
+      if (df$is_oneway[1] == 1) {
+        # for one way, left and right values are forward left and right
+        if (any(keys == "cycleway:left")) {
+          tag <- values[which(keys == "cycleway:left")]
+          bikelaneFwdLeft <- c(bikelaneFwdLeft, tag)
+        }
+        if (any(keys == "cycleway:right")) {
+          tag <- values[which(keys == "cycleway:right")]
+          bikelaneFwdRight <- c(bikelaneFwdRight, tag)
+        }
+        if (any(keys == "cycleway:both")) {
+          tag <- values[which(keys == "cycleway:both")]
+          bikelaneFwdLeft <- c(bikelaneFwdLeft, tag)
+          bikelaneFwdRight <- c(bikelaneFwdRight, tag)
+        }
+      } else {
+        # for two way, left values are forward left and right values are reverse left
+        if (any(keys == "cycleway:left")) {
+          tag <- values[which(keys == "cycleway:left")]
+          bikelaneFwdLeft <- c(bikelaneFwdLeft, tag)
+        }
+        if (any(keys == "cycleway:right")) {
+          tag <- values[which(keys == "cycleway:right")]
+          bikelaneRvsLeft <- c(bikelaneRvsLeft, tag)
+        }
+        if (any(keys == "cycleway:both")) {
+          tag <- values[which(keys == "cycleway:both")]
+          bikelaneFwdLeft <- c(bikelaneFwdLeft, tag)
+          bikelaneRvsLeft <- c(bikelaneRvsLeft, tag)
+        }
+      }
+      ## add the tags to the df
+      df$bikelaneFwdLeft[1] <- 
+        ifelse(is.null(bikelaneFwdLeft), NA, 
+               stringr::str_flatten(unique(bikelaneFwdLeft), collapse = ","))
+      df$bikelaneFwdRight[1] <- 
+        ifelse(is.null(bikelaneFwdRight), NA, 
+               stringr::str_flatten(unique(bikelaneFwdRight), collapse = ","))
+      df$bikelaneRvsLeft[1] <- 
+        ifelse(is.null(bikelaneRvsLeft), NA, 
+               stringr::str_flatten(unique(bikelaneRvsLeft), collapse = ","))
     }
     return(df)
   }

@@ -70,7 +70,8 @@ restructureData <- function(networkList, highway_lookup,
                            "highway", "is_oneway", "cycleway", "surface",
                            "is_cycle", "is_walk", "is_car", "modes")),
                   contains("ndvi"),
-                  contains("tcc")) %>%
+                  contains("tcc"),
+                  contains("bikelane")) %>%
     mutate(id=NA) %>%
     relocate(id)
 

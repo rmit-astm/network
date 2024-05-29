@@ -41,6 +41,12 @@ makeEdgesOneway <- function(nodes_current, edges_current) {
       mutate(slope_pct = rvs_slope_pct)
   }
   
+  # if bikelane columns are present, select 'rvsLeft' as 'left'
+  if ("bikelaneRvsLeft" %in% colnames(edges_twoway_reversed)) {
+    edges_twoway_reversed <- edges_twoway_reversed %>%
+      mutate(bikelaneLeft = bikelaneRvsLeft)
+  }
+  
   # select required fields (excluding 'is_oneway') [note that "id" is not 
   # retained here - it is replaced by link_id]
   required_fields <- c("from_id", "to_id", "fromx", "fromy", "tox", "toy",
@@ -61,6 +67,10 @@ makeEdgesOneway <- function(nodes_current, edges_current) {
   if (length(tcc_columns) > 0) {
     required_fields <- c(required_fields, tcc_columns)
   }
+  # bikelane columns - only left for reversed two-way edges
+  if ("bikelaneLeft" %in% colnames(edges_twoway_reversed)) {
+    required_fields <- c(required_fields, "bikelaneLeft")
+  }
   edges_twoway_reversed <- edges_twoway_reversed %>%
     dplyr::select(all_of(required_fields))
   
@@ -70,15 +80,53 @@ makeEdgesOneway <- function(nodes_current, edges_current) {
       rename(slope_pct = fwd_slope_pct)
   }
   
+  # modify original edges to rename fwd/rvs bikelane columns if present, and
+  # ensure they are in required fields
+  if ("bikelaneFwdLeft" %in% colnames(edges_current)) {
+    edges_current <- edges_current %>%
+      rename(bikelaneLeft = bikelaneFwdLeft)
+    if (!"bikelaneLeft" %in% required_fields) {
+      required_fields <- c(required_fields, "bikelaneLeft")
+    }
+  }
+  if ("bikelaneFwdRight" %in% colnames(edges_current)) {
+    edges_current <- edges_current %>%
+      rename(bikelaneRight = bikelaneFwdRight)
+    if (!"bikelaneRight" %in% required_fields) {
+      required_fields <- c(required_fields, "bikelaneRight")
+    }
+  }
+  
   # bind with reversed two-way edges
   edges_current <- edges_current %>%
     dplyr::select(all_of(required_fields)) %>%
-    rbind(., edges_twoway_reversed)
+    bind_rows(., edges_twoway_reversed)
   
   # add link_id, based on rownumber (at the end, not beginning, because igraph 
   # requires from_id and to_id to be the first two columns)
   edges_current <- edges_current %>%
     mutate(link_id = row_number())
+  
+  # clean up bikelane columns
+  bikelaneinfra_columns <- c("bikelaneLeft", "bikelaneRight")
+
+  bikelaneinfra_clean <- function(x) {
+    # remove leading and trailing commas
+    x <- gsub("^,|,$", "", x)
+    # remove 'no' or 'yes' when combined with another tag
+    x <- gsub("no,|,no", "", x)
+    x <- gsub("yes,|,yes", "", x)
+    # remove 'lane' when combined with another tag (there are very few of these)
+    x <- gsub("lane,|,lane", "", x)
+    # replace empty strings with NA
+    x <- ifelse(x == "", NA, x)
+    return(x)
+  }
+
+  for(column in bikelaneinfra_columns) {
+    edges_current[[column]] <- bikelaneinfra_clean(edges_current[[column]])
+  }
+  
 
   
   return(list(nodes_current, edges_current))
