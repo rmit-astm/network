@@ -1,9 +1,9 @@
 # function to join the Bendigo 'everyday routes' file to the network
 
 addBendigoEverydayRoutes <- function(network.nodes,
-                              network.links,
-                              everyday.route.location,
-                              outputCrs) {
+                                     network.links,
+                                     everyday.route.location,
+                                     outputCrs) {
   
   # network.nodes = networkOneway[[1]]
   # network.links = networkOneway[[2]]
@@ -105,7 +105,7 @@ addBendigoEverydayRoutes <- function(network.nodes,
     filter(id %in% intersection.ids) %>%
     summarise() %>%
     st_buffer(0.01)
-
+  
   
   # processing groups into useable linestrings
   # -----------------------------------#
@@ -142,17 +142,17 @@ addBendigoEverydayRoutes <- function(network.nodes,
       st_difference(., intersections) %>%
       st_cast(to = "MULTILINESTRING") %>%
       st_cast(to = "LINESTRING")
- 
+    
     # now combine the contiguous sections again - this time, as they've been
     # split at intersections, each should be sections of a single line
- 
+    
     # find indices of lines that share boundary point
     my_idx_touches <- st_touches(group.split)
     # convert to a graph object
     my_igraph <- graph_from_adj_list((my_idx_touches))
     # find the groups of touching lines
     my_components <- components(my_igraph)$membership
-
+    
     # merge each group (single lines)
     group.split.merged <- group.split %>%
       group_by(section = as.character({{my_components}})) %>%
@@ -169,14 +169,14 @@ addBendigoEverydayRoutes <- function(network.nodes,
             st_endpoint(group.linestrings) %>% st_sf()) %>%
       distinct() %>%
       mutate(n.node = network.nodes$id[st_nearest_feature(., network.nodes)])
-
+    
     distances <- c()
     for (j in 1:nrow(group.start.end.points)) {
       point <- group.start.end.points[j, ]
       node <- network.nodes %>% filter(id == group.start.end.points$n.node[j])
       distances[j] <- as.numeric(st_distance(point, node))
     }
-
+    
     useful.start.end.points <- group.start.end.points %>%
       cbind(distances) %>%
       filter(distances <= 20) %>%
@@ -209,16 +209,16 @@ addBendigoEverydayRoutes <- function(network.nodes,
         Ride_Type == "Natural Trail"                    ~ 4,
         Ride_Type == "Shared Path / Protected Cycleway" ~ 5
       ))
-
+    
     # add to the dataframe
     split.routes <- bind_rows(split.routes, group.resplit)
   }
-
+  
   
   # set up graph
   # -----------------------------------#
   
-  # graph for finding distances (undirected because finding two-way)
+  # graph for finding distances (directed)
   g.links <- network.links %>%
     st_drop_geometry() %>%
     # reduced weight where cycleway tag, and increased weight if non-cyclable
@@ -229,66 +229,119 @@ addBendigoEverydayRoutes <- function(network.nodes,
     )) %>%
     dplyr::select(from_id, to_id, weight, link_id)
   
-  g <- graph_from_data_frame(g.links, directed = F)
-
+  g <- graph_from_data_frame(g.links, directed = T)
+  
   
   # routing loop
   # -----------------------------------#
   
-  output.links <- data.frame()
+  cores <- detectCores()
+  cluster <- parallel::makeCluster(cores)
+  doSNOW::registerDoSNOW(cluster)
+  pb <- txtProgressBar(max = max(nrow(split.routes), 2), style = 3)
+  progress <- function(n) setTxtProgressBar(pb, n)
+  opts <- list(progress = progress)
   
-  for (i in 1:nrow(split.routes)) {
-    # for (i in 451:451) {
-    
-    route <- split.routes[i, ]
-    route.type <- route$Ride_Type
-    route.rank <- route$ride_type_rank
-    
-    # find start and end nodes, and their distances
-    startpoint <- st_startpoint(route)  
-    endpoint <- st_endpoint(route) 
-    start.node <- network.nodes$id[st_nearest_feature(startpoint, network.nodes)]
-    end.node <- network.nodes$id[st_nearest_feature(endpoint, network.nodes)]
-    start.dist <- st_distance(startpoint, network.nodes %>% filter(id == start.node)) %>%
-      as.numeric()
-    end.dist <- st_distance(endpoint, network.nodes %>% filter(id == end.node)) %>%
-      as.numeric()
-    
-    # if distance from startpoint or endpoint to nearest node exceeds 50m, then exit
-    if (round(start.dist) > 150 | round(end.dist) > 150) {
-      next
-    }
-    
-    if (start.node != end.node) {
-      # find shortest path [s, full graph and cycleway graph] [and its edges]
-      path <- shortest_paths(g,
-                             from = as.character(start.node),
-                             to = as.character(end.node),
-                             mode = "out",
-                             output = "epath")  
-      
-      path.edges <- edge_attr(g, "link_id", path$epath[[1]])
-      
-      if (length(path.edges) > 0) {
-        for (j in 1:length(path.edges)) {
-          output.row <- cbind(link_id = path.edges[j],
-                              everyday_type = route.type,
-                              rank = route.rank) %>%
-            as.data.frame()
-          output.links <- bind_rows(output.links, output.row)
-        }
-      } 
-    }
-   
-    if (i %% 50 == 0) {
-      print(paste("Found routes for", i, "of", nrow(split.routes), "route segments"))
-    }
-  }
+  # report
+  echo(paste("Finding network routes for", nrow(split.routes), "route segments;",
+             "parallel processing with", cores, "cores\n"))
+  
+  # loop to find list of boundary points
+  output.links <-
+    foreach(i = 1:nrow(split.routes),
+            # foreach(i = 1:10,
+            .combine = rbind,
+            .packages = c("dplyr", "sf", "igraph", "lwgeom"),
+            .options.snow = opts) %dopar% {
+              
+              output.links <- data.frame()
+              
+              route <- split.routes[i, ]
+              route.type <- route$Ride_Type
+              route.rank <- route$ride_type_rank
+              
+              # find start and end nodes (nearest node on nearest), and their distances
+              startpoint <- st_startpoint(route)  
+              start.link <- network.links[st_nearest_feature(startpoint, network.links), ]
+              eligible.start.nodes <- network.nodes %>%
+                filter(id == start.link$from_id | id == start.link$to_id)
+              start.node <- network.nodes %>%
+                filter(id == eligible.start.nodes$id[st_nearest_feature(startpoint, eligible.start.nodes)]) %>%
+                .$id
+              endpoint <- st_endpoint(route)
+              end.link <- network.links[st_nearest_feature(endpoint, network.links), ]
+              eligible.end.nodes <- network.nodes %>%
+                filter(id == end.link$from_id | id == end.link$to_id)
+              end.node <- network.nodes %>%
+                filter(id == eligible.end.nodes$id[st_nearest_feature(endpoint, eligible.end.nodes)]) %>%
+                .$id
+              start.dist <- st_distance(startpoint, network.nodes %>% filter(id == start.node)) %>%
+                as.numeric()
+              end.dist <- st_distance(endpoint, network.nodes %>% filter(id == end.node)) %>%
+                as.numeric()
+              
+              # if distance from startpoint or endpoint to nearest node exceeds 50m, then exit
+              if (round(start.dist) > 150 | round(end.dist) > 150) {
+                return(output.links)
+              }
+              
+              if (start.node != end.node) {
+                
+                # outward direction
+                
+                # find shortest path and its edges
+                path <- shortest_paths(g,
+                                       from = as.character(start.node),
+                                       to = as.character(end.node),
+                                       mode = "out",
+                                       output = "epath")  
+                
+                path.edges <- edge_attr(g, "link_id", path$epath[[1]])
+                
+                if (length(path.edges) > 0) {
+                  for (j in 1:length(path.edges)) {
+                    output.row <- cbind(link_id = path.edges[j],
+                                        everyday_type = route.type,
+                                        rank = route.rank) %>%
+                      as.data.frame()
+                    output.links <- bind_rows(output.links, output.row)
+                  }
+                } 
+                
+                # reverse direction, except where one way
+                if (route.type != "One Way - On Road Low Stress") {
+                  # find shortest path and its edges
+                  path <- shortest_paths(g,
+                                         from = as.character(start.node),
+                                         to = as.character(end.node),
+                                         mode = "in",
+                                         output = "epath")  
+                  
+                  path.edges <- edge_attr(g, "link_id", path$epath[[1]])
+                  
+                  if (length(path.edges) > 0) {
+                    for (j in 1:length(path.edges)) {
+                      output.row <- cbind(link_id = path.edges[j],
+                                          everyday_type = route.type,
+                                          rank = route.rank) %>%
+                        as.data.frame()
+                      output.links <- bind_rows(output.links, output.row)
+                    }
+                  } 
+                }
+              }
+              
+              return(output.links)
+            }
+  
+  # close the progress bar and cluster
+  close(pb)
+  stopCluster(cluster)
   
   
   # selecting the links matching the routes
   # -----------------------------------#
-
+  
   # distinct output links
   output.links.distinct <- output.links %>%
     distinct() %>%
@@ -301,105 +354,21 @@ addBendigoEverydayRoutes <- function(network.nodes,
     # remove the rank column
     dplyr::select(-rank)
   
-  # select the network links that are in output.links
-  links.routed <- network.links %>%
-    st_drop_geometry() %>%
-    filter(link_id %in% output.links.distinct$link_id) %>%
-    # joining field connecting from_id and to_id, lowest first
-    rowwise() %>%
-    mutate(join_key = paste(min(from_id, to_id), max(from_id, to_id), sep = "_")) %>%
-    ungroup() %>%
-    # join the everyday type
-    left_join(output.links.distinct, by = "link_id")
-  
-  # add other links that join same from-to pair or reversed to-from pair 
-  # (this will also include the links.routed themselves)
-  links.matching <- network.links %>%
-    
-    # field connecting from_id and to_id, lowest first
-    rowwise() %>%
-    mutate(join_key = paste(min(from_id, to_id), max(from_id, to_id), sep = "_")) %>%
-    ungroup() %>%
-    
-    # select links that match either the from_to pattern or its reverse
-    filter(join_key %in% links.routed$join_key) %>%
-    
-    # join the everyday type
-    left_join(links.routed %>% dplyr::select(join_key, everyday_type),
-              by = "join_key") %>%
-  
-    # add is_cycleway column to help eliminate duplicates
-    mutate(is_cycleway = ifelse(is.na(cycleway), 0, 1)) %>%
-    
-    # remove duplicates
-    mutate(from_to = paste(from_id, to_id, sep = "_")) %>%
-    group_by(from_to) %>%
-    filter(is_cycle == max(is_cycle)) %>%  # removing is_cycle=0 if there is a 1
-    filter(is_cycleway == max(is_cycleway)) %>% # removing is_cycleway=0 if there is a 1
-    ungroup()
-  
-  
-  # omit one-way links that are the wrong way
-  # -----------------------------------#
-  
-  # vector for link ids to be discarded
-  discards <- c()
-  
-  # select the original one way uncast routes (note that these are digitised
-  # in their correct one-way direction)
-  routes.oneway <- routes.uncast %>%
-    filter(Ride_Type == "One Way - On Road Low Stress")
-  
-  # select the links.matching that are one way
-  links.matching.oneway <- links.matching %>%
-    filter(everyday_type == "One Way - On Road Low Stress")
-  
-  # for each matching link, find which original route it's closest to, then 
-  # discard if the startpoint is closer to the matching link to_id than from_id
-  for (i in 1:nrow(links.matching.oneway)) {
-    link <- links.matching.oneway[i, ]
-    closest.route <- routes.oneway[st_nearest_feature(link, routes.oneway),]
-    closest.route.startpoint <- st_startpoint(closest.route) %>% st_sf()
-    
-    # distances from closest route startpoint to from_id and to_id
-    dist.start <- st_distance(closest.route.startpoint,
-                              network.nodes %>%
-                                filter(id == link$from_id))
-    dist.end <- st_distance(closest.route.startpoint,
-                            network.nodes %>%
-                              filter(id == link$to_id))
-    
-    # discard if wrong way
-    if (as.numeric(dist.end) < as.numeric(dist.start)) {
-      discards <- c(discards, link$link_id)
-    }
-  }
-  
-  # remove discards from links.matching
-  links.matching <- links.matching %>%
-    filter(!link_id %in% discards)
-  
-  # # chk duplicates
-  # chk <- links.matching %>%
-  #   group_by(from_to) %>%
-  #   mutate(n = n()) %>%
-  #   filter(n > 1)  # 0 rows (so all duplicates successfully eliminated)
-  
   
   # join with links to produce output
   # -----------------------------------#
   
-  # join everyday details to links 
+  # join everyday details to links
   links.with.everyday <- network.links %>%
-    left_join(links.matching %>% 
-                st_drop_geometry() %>%
-                dplyr::select(link_id, bend_everyday_type = everyday_type), 
+    left_join(output.links.distinct %>%
+                dplyr::select(link_id, bend_everyday_type = everyday_type),
               by = "link_id")
+  
   
   # # check whether any links with an everyday_type are is_cycle=0
   # chk <- links.with.everyday %>%
-  #   filter(!is.na(everyday_type)) %>%
-  #   filter(is_cycle == 0)  # there are 74 of these
+  #   filter(!is.na(bend_everyday_type)) %>%
+  #   filter(is_cycle == 0)  # there are 37 of these
   
   # alter is_cycle and mode to match those that are everyday links
   for (i in 1:nrow(links.with.everyday)) {
@@ -417,7 +386,6 @@ addBendigoEverydayRoutes <- function(network.nodes,
         link.modes == "car,walk,bus" ~ "car,bike,walk,bus"
       )
       # print(paste("row no", i, "now has modes", links.with.everyday$modes[i]))
-      
     }
   }
   
