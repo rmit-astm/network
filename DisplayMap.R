@@ -87,7 +87,7 @@ makeDisplayLayers <- function() {
       tcc_percent <= 10 ~ "Up to 10%",
       tcc_percent <= 25 ~ "> 10% up to 25%",
       tcc_percent <= 50 ~ "> 25% up to 50%",
-      tcc_percent > 50  ~ "> 75%"
+      tcc_percent > 50  ~ "> 50%"
     )) %>%
     dplyr::select(canopy_cover)
 
