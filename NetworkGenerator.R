@@ -49,7 +49,7 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
     cropAreaPoly = "city-of-melbourne_victoria"
     demFile = "./data/dem_melbourne.tif"
     ndviFile = "./data/NDVI_Melbourne_2023.tif"
-    treeCanopyCoverFile = ""  # 'addTreeCanopyCover' must be set to F
+    treeCanopyCoverFile = "./data/TCC_Melbourne_5m.tif"  
     gtfs_feed = "./data/gtfs.zip"
 
   } else {
