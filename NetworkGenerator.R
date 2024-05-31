@@ -21,6 +21,8 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   #   (only supported for Victoria at this stage)
   # •	demFile: if 'addElevation=T', digital elevation model raster file
   # •	ndviFile: if 'addNDVI=T', raster file with NDVI values
+  # • treeCanopyCoverFile: if 'addTreeCanopyCover=T=T', raster file with tree
+  #   canopy coverage values
   # •	gtfs_feed: if 'addGtfs=T' or 'addDestinationLayer=T, zip file containing 
   #   GTFS data (and, if 'addGtfs=T', also set analysis date in GTFS section)
 
