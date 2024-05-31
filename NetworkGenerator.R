@@ -102,7 +102,7 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
 
   # NDVI
   # A flag for whether to add NDVI or not
-  addNDVI=T
+  addNDVI=F
   # Buffer distance for finding average NDVI for links
   ndviBuffDist=30
 
