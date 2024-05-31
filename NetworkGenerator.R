@@ -35,11 +35,12 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
     treeCanopyCoverFile = "./data/TCC_Bendigo_5m.tif" 
     gtfs_feed = "./data/gtfs.zip"
     # city-specific data
-    bendigoParking <- "./data/CoGB_Parking_GIS_Layers_GDA2020Z55_20240222.zip"
-    bendigoParkingPoly <- "/CoGB_Parking_Polygons_GDA2020Z55_20240222.shp"
-    bendigoParkingLine <- "/CoGB_Parking_Lines_GDA2020Z55_20240222.shp"
-    bendigoBikeRacks <- "./data/Bike Racks_v1.2.csv"
-    bendigoEverydayRoutes <- "./data/cogb-cycling-everyday-rides.shz"
+    addBendigoData = T
+    bendigoParking = "./data/CoGB_Parking_GIS_Layers_GDA2020Z55_20240222.zip"
+    bendigoParkingPoly = "/CoGB_Parking_Polygons_GDA2020Z55_20240222.shp"
+    bendigoParkingLine = "/CoGB_Parking_Lines_GDA2020Z55_20240222.shp"
+    bendigoBikeRacks = "./data/Bike Racks_v1.2.csv"
+    bendigoEverydayRoutes = "./data/cogb-cycling-everyday-rides.shz"
 
   } else if (city == "Melbourne") {
     region = "./data/greater_melbourne.sqlite"
@@ -98,7 +99,7 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
 
   # NDVI
   # A flag for whether to add NDVI or not
-  addNDVI=F
+  addNDVI=T
   # Buffer distance for finding average NDVI for links
   ndviBuffDist=30
 
@@ -271,7 +272,7 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   
   # adding destinations layer
   if (addDestinationLayer) {
-    if (city == "Bendigo") {
+    if (city == "Bendigo" & addBendigoData) {
       localDestinations <- getDestinationsBendigo(bendigoParking,
                                                   bendigoParkingPoly,
                                                   bendigoParkingLine,
@@ -352,8 +353,8 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
                                          city)) 
   }
   
-  # Adding Bendigo 'everyday routes' status as an attribute to links
-  if (city == "Bendigo") {
+  # Adding Bendigo 'everyday routes' and 'proposed protected routes' as link attributes
+  if (city == "Bendigo" & addBendigoData) {
     networkOneway[[2]] <- addBendigoEverydayRoutes(networkOneway[[1]],
                                                    networkOneway[[2]],
                                                    bendigoEverydayRoutes,
