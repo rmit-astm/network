@@ -87,56 +87,9 @@ processOsmTags <- function(osm_df,this_defaults_df){
         df$permlanes[1] = newLanes
       }
       
-      # Melbourne bike lane project details
-      # see https://wiki.openstreetmap.org/wiki/Melbourne_Bike_Lane_Project
+      # add Melbourne Bikelane Project tags
+      df <- getBikelaneProjectTags(df, keys, values)
       
-      # cycleway:[side] tags - infrastructure type
-      ## empty vectors for the tags
-      bikelaneFwdLeft <- c()
-      bikelaneFwdRight <- c()
-      bikelaneRvsLeft <- c()
-      ## extract the tags
-      if (df$is_oneway[1] == 1) {
-        # for one way, left and right values are forward left and right
-        if (any(keys == "cycleway:left")) {
-          tag <- values[which(keys == "cycleway:left")]
-          bikelaneFwdLeft <- c(bikelaneFwdLeft, tag)
-        }
-        if (any(keys == "cycleway:right")) {
-          tag <- values[which(keys == "cycleway:right")]
-          bikelaneFwdRight <- c(bikelaneFwdRight, tag)
-        }
-        if (any(keys == "cycleway:both")) {
-          tag <- values[which(keys == "cycleway:both")]
-          bikelaneFwdLeft <- c(bikelaneFwdLeft, tag)
-          bikelaneFwdRight <- c(bikelaneFwdRight, tag)
-        }
-      } else {
-        # for two way, left values are forward left and right values are reverse left
-        if (any(keys == "cycleway:left")) {
-          tag <- values[which(keys == "cycleway:left")]
-          bikelaneFwdLeft <- c(bikelaneFwdLeft, tag)
-        }
-        if (any(keys == "cycleway:right")) {
-          tag <- values[which(keys == "cycleway:right")]
-          bikelaneRvsLeft <- c(bikelaneRvsLeft, tag)
-        }
-        if (any(keys == "cycleway:both")) {
-          tag <- values[which(keys == "cycleway:both")]
-          bikelaneFwdLeft <- c(bikelaneFwdLeft, tag)
-          bikelaneRvsLeft <- c(bikelaneRvsLeft, tag)
-        }
-      }
-      ## add the tags to the df
-      df$bikelaneFwdLeft[1] <- 
-        ifelse(is.null(bikelaneFwdLeft), NA, 
-               stringr::str_flatten(unique(bikelaneFwdLeft), collapse = ","))
-      df$bikelaneFwdRight[1] <- 
-        ifelse(is.null(bikelaneFwdRight), NA, 
-               stringr::str_flatten(unique(bikelaneFwdRight), collapse = ","))
-      df$bikelaneRvsLeft[1] <- 
-        ifelse(is.null(bikelaneRvsLeft), NA, 
-               stringr::str_flatten(unique(bikelaneRvsLeft), collapse = ","))
     }
     return(df)
   }
@@ -148,3 +101,210 @@ processOsmTags <- function(osm_df,this_defaults_df){
     
   return(osmAttributed)
 }
+
+
+# Melbourne bike lane project details
+# see https://wiki.openstreetmap.org/wiki/Melbourne_Bike_Lane_Project
+getBikelaneProjectTags <- function(df, keys, values) {
+  
+  # cycleway:[side] tags - infrastructure type
+  ## empty vectors for the tags
+  bikelaneFwdLeft <- c()
+  bikelaneFwdRight <- c()
+  bikelaneRvsLeft <- c()
+  ## extract the tags
+  if (df$is_oneway[1] == 1) {
+    # for one way, left and right values are forward left and right
+    if (any(keys == "cycleway:left")) {
+      tag <- values[which(keys == "cycleway:left")]
+      bikelaneFwdLeft <- c(bikelaneFwdLeft, tag)
+    }
+    if (any(keys == "cycleway:right")) {
+      tag <- values[which(keys == "cycleway:right")]
+      bikelaneFwdRight <- c(bikelaneFwdRight, tag)
+    }
+    if (any(keys == "cycleway:both")) {
+      tag <- values[which(keys == "cycleway:both")]
+      bikelaneFwdLeft <- c(bikelaneFwdLeft, tag)
+      bikelaneFwdRight <- c(bikelaneFwdRight, tag)
+    }
+  } else {
+    # for two way, left values are forward left and right values are reverse left
+    if (any(keys == "cycleway:left")) {
+      tag <- values[which(keys == "cycleway:left")]
+      bikelaneFwdLeft <- c(bikelaneFwdLeft, tag)
+    }
+    if (any(keys == "cycleway:right")) {
+      tag <- values[which(keys == "cycleway:right")]
+      bikelaneRvsLeft <- c(bikelaneRvsLeft, tag)
+    }
+    if (any(keys == "cycleway:both")) {
+      tag <- values[which(keys == "cycleway:both")]
+      bikelaneFwdLeft <- c(bikelaneFwdLeft, tag)
+      bikelaneRvsLeft <- c(bikelaneRvsLeft, tag)
+    }
+  }
+  ## add the infrastructure tags to the df
+  df$bikelaneFwdLeft[1] <- 
+    ifelse(is.null(bikelaneFwdLeft), NA, 
+           stringr::str_flatten(unique(bikelaneFwdLeft), collapse = ","))
+  df$bikelaneFwdRight[1] <- 
+    ifelse(is.null(bikelaneFwdRight), NA, 
+           stringr::str_flatten(unique(bikelaneFwdRight), collapse = ","))
+  df$bikelaneRvsLeft[1] <- 
+    ifelse(is.null(bikelaneRvsLeft), NA, 
+           stringr::str_flatten(unique(bikelaneRvsLeft), collapse = ","))
+  
+  # cycleway:[side]:width tags - width of bike lane
+  ## empty vectors for the tags
+  bikelaneWidthFwdLeft <- c()
+  bikelaneWidthFwdRight <- c()
+  bikelaneWidthRvsLeft <- c()
+  if (df$is_oneway[1] == 1) {
+    # for one way, left and right values are forward left and right
+    if (any(keys == "cycleway:left:width")) {
+      tag <- values[which(keys == "cycleway:left:width")] %>% as.numeric()
+      bikelaneWidthFwdLeft <- c(bikelaneWidthFwdLeft, tag)
+    }
+    if (any(keys == "cycleway:right:width")) {
+      tag <- values[which(keys == "cycleway:right:width")] %>% as.numeric()
+      bikelaneWidthFwdRight <- c(bikelaneWidthFwdRight, tag)
+    }
+    if (any(keys == "cycleway:both:width")) {
+      tag <- values[which(keys == "cycleway:both:width")] %>% as.numeric()
+      bikelaneWidthFwdLeft <- c(bikelaneWidthFwdLeft, tag)
+      bikelaneWidthFwdRight <- c(bikelaneWidthFwdRight, tag)
+    }
+  } else {
+    # for two way, left values are forward left and right values are reverse left
+    if (any(keys == "cycleway:left:width")) {
+      tag <- values[which(keys == "cycleway:left:width")] %>% as.numeric()
+      bikelaneWidthFwdLeft <- c(bikelaneWidthFwdLeft, tag)
+    }
+    if (any(keys == "cycleway:right:width")) {
+      tag <- values[which(keys == "cycleway:right:width")] %>% as.numeric()
+      bikelaneWidthRvsLeft <- c(bikelaneWidthRvsLeft, tag)
+    }
+    if (any(keys == "cycleway:both:width")) {
+      tag <- values[which(keys == "cycleway:both:width")] %>% as.numeric()
+      bikelaneWidthFwdLeft <- c(bikelaneWidthFwdLeft, tag)
+      bikelaneWidthRvsLeft <- c(bikelaneWidthRvsLeft, tag)
+    }
+  }
+  ## add the width tags to the df
+  df$bikelaneWidthFwdLeft[1] <- 
+    ifelse(is.null(bikelaneWidthFwdLeft), NA, 
+          max(bikelaneWidthFwdLeft))
+  df$bikelaneWidthFwdRight[1] <- 
+    ifelse(is.null(bikelaneWidthFwdRight), NA, 
+           max(bikelaneWidthFwdRight))
+  df$bikelaneWidthRvsLeft[1] <- 
+    ifelse(is.null(bikelaneWidthRvsLeft), NA, 
+           max(bikelaneWidthRvsLeft))
+  
+  # cycleway:[side]:traffic_mode tags - traffic conditions to left or right of bike lane
+  ## empty vectors for the tags
+  bikelaneTrafFwdLeft <- c()
+  bikelaneTrafFwdRight <- c()
+  bikelaneTrafRvsLeft <- c()
+  if (df$is_oneway[1] == 1) {
+    # for one way, left and right values are forward left and right
+    # eg: 'cycleway:left:traffic_mode:both' describes the traffic mode on both sides
+    # of the cycleway that is to the left of the road; in extracting tags, take 
+    # the final left/right/both (after 'traffic_mode) and add it at the start of
+    # the tag, eg 'cycleway:left:traffic_mode:both=parking' becomes 'both:parking'
+    if (any(keys == "cycleway:left:traffic_mode:left")) {
+      tag <- paste0("left=", values[which(keys == "cycleway:left:traffic_mode:left")])
+      bikelaneTrafFwdLeft <- c(bikelaneTrafFwdLeft, tag)
+    }
+    if (any(keys == "cycleway:left:traffic_mode:right")) {
+      tag <- paste0("right=", values[which(keys == "cycleway:left:traffic_mode:right")])
+      bikelaneTrafFwdLeft <- c(bikelaneTrafFwdLeft, tag)
+    }
+    if (any(keys == "cycleway:left:traffic_mode:both")) {
+      tag <- paste0("both=", values[which(keys == "cycleway:left:traffic_mode:both")])
+      bikelaneTrafFwdLeft <- c(bikelaneTrafFwdLeft, tag)
+    }
+    if (any(keys == "cycleway:right:traffic_mode:left")) {
+      tag <- paste0("left=", values[which(keys == "cycleway:right:traffic_mode:left")])
+      bikelaneTrafFwdRight <- c(bikelaneTrafFwdRight, tag)
+    }
+    if (any(keys == "cycleway:right:traffic_mode:right")) {
+      tag <- paste0("right=", values[which(keys == "cycleway:right:traffic_mode:right")])
+      bikelaneTrafFwdRight <- c(bikelaneTrafFwdRight, tag)
+    }
+    if (any(keys == "cycleway:right:traffic_mode:both")) {
+      tag <- paste0("both=", values[which(keys == "cycleway:right:traffic_mode:both")])
+      bikelaneTrafFwdRight <- c(bikelaneTrafFwdRight, tag)
+    }
+    if (any(keys == "cycleway:both:traffic_mode:left")) {
+      tag <- paste0("left=", values[which(keys == "cycleway:both:traffic_mode:left")])
+      bikelaneTrafFwdLeft <- c(bikelaneTrafFwdLeft, tag)
+      bikelaneTrafFwdRight <- c(bikelaneTrafFwdRight, tag)
+    }
+    if (any(keys == "cycleway:both:traffic_mode:right")) {
+      tag <- paste0("right=", values[which(keys == "cycleway:both:traffic_mode:right")])
+      bikelaneTrafFwdLeft <- c(bikelaneTrafFwdLeft, tag)
+      bikelaneTrafFwdRight <- c(bikelaneTrafFwdRight, tag)
+    }
+    if (any(keys == "cycleway:both:traffic_mode:both")) {
+      tag <- paste0("both=", values[which(keys == "cycleway:both:traffic_mode:both")])
+      bikelaneTrafFwdLeft <- c(bikelaneTrafFwdLeft, tag)
+      bikelaneTrafFwdRight <- c(bikelaneTrafFwdRight, tag)
+    }
+  } else {
+    # for two way, left values are forward left and right values are reverse left
+    if (any(keys == "cycleway:left:traffic_mode:left")) {
+      tag <- paste0("left=", values[which(keys == "cycleway:left:traffic_mode:left")])
+      bikelaneTrafFwdLeft <- c(bikelaneTrafFwdLeft, tag)
+    }
+    if (any(keys == "cycleway:left:traffic_mode:right")) {
+      tag <- paste0("right=", values[which(keys == "cycleway:left:traffic_mode:right")])
+      bikelaneTrafFwdLeft <- c(bikelaneTrafFwdLeft, tag)
+    }
+    if (any(keys == "cycleway:left:traffic_mode:both")) {
+      tag <- paste0("both=", values[which(keys == "cycleway:left:traffic_mode:both")])
+      bikelaneTrafFwdLeft <- c(bikelaneTrafFwdLeft, tag)
+    }
+    if (any(keys == "cycleway:right:traffic_mode:left")) {
+      tag <- paste0("left=", values[which(keys == "cycleway:right:traffic_mode:left")])
+      bikelaneTrafRvsLeft <- c(bikelaneTrafRvsLeft, tag)
+    }
+    if (any(keys == "cycleway:right:traffic_mode:right")) {
+      tag <- paste0("right=", values[which(keys == "cycleway:right:traffic_mode:right")])
+      bikelaneTrafRvsLeft <- c(bikelaneTrafRvsLeft, tag)
+    }
+    if (any(keys == "cycleway:right:traffic_mode:both")) {
+      tag <- paste0("both=", values[which(keys == "cycleway:right:traffic_mode:both")])
+      bikelaneTrafRvsLeft <- c(bikelaneTrafRvsLeft, tag)
+    }
+    if (any(keys == "cycleway:both:traffic_mode:left")) {
+      tag <- paste0("left=", values[which(keys == "cycleway:both:traffic_mode:left")])
+      bikelaneTrafFwdLeft <- c(bikelaneTrafFwdLeft, tag)
+      bikelaneTrafRvsLeft <- c(bikelaneTrafRvsLeft, tag)
+    }
+    if (any(keys == "cycleway:both:traffic_mode:right")) {
+      tag <- paste0("right=", values[which(keys == "cycleway:both:traffic_mode:right")])
+      bikelaneTrafFwdLeft <- c(bikelaneTrafFwdLeft, tag)
+      bikelaneTrafRvsLeft <- c(bikelaneTrafRvsLeft, tag)
+    }
+    if (any(keys == "cycleway:both:traffic_mode:both")) {
+      tag <- paste0("both=", values[which(keys == "cycleway:both:traffic_mode:both")])
+      bikelaneTrafFwdLeft <- c(bikelaneTrafFwdLeft, tag)
+      bikelaneTrafRvsLeft <- c(bikelaneTrafRvsLeft, tag)
+    }
+  }
+  ## add the traffic mode tags to the df
+  df$bikelaneTrafFwdLeft[1] <- 
+    ifelse(is.null(bikelaneTrafFwdLeft), NA, 
+           stringr::str_flatten(unique(bikelaneTrafFwdLeft), collapse = ","))
+  df$bikelaneTrafFwdRight[1] <- 
+    ifelse(is.null(bikelaneTrafFwdRight), NA, 
+           stringr::str_flatten(unique(bikelaneTrafFwdRight), collapse = ","))
+  df$bikelaneTrafRvsLeft[1] <- 
+    ifelse(is.null(bikelaneTrafRvsLeft), NA, 
+           stringr::str_flatten(unique(bikelaneTrafRvsLeft), collapse = ","))
+
+  return(df)
+}
+
