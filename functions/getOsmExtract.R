@@ -37,7 +37,7 @@ getOsmExtract <- function(region,
   options(timeout = 7200)
   
   # download the full extract (whole of Australia; quite slow)
-  download.url <- oe_match(region.buffer, crs = outputCrs)$url
+  download.url <- oe_match(surroundingRegion.buffer, crs = outputCrs)$url
   echo(paste("Downloading OSM extract from", download.url, "\n"))
   full.extract <- oe_download(download.url, download_directory = ".")
   
