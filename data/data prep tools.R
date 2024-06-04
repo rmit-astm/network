@@ -46,6 +46,18 @@ getRegion(input.file = read_zipped_GIS(zipfile = "./data/GCCSA_2021_AUST_SHP_GDA
                input.field = "GCC_NAME21", input.name = "Greater Melbourne",
                output.filename = "greater_melbourne", outputCrs = 7899)
 
+# Whole of Vic - from GCCSA, merged Melbourne and Rest of Vic
+getRegion(input.file = read_zipped_GIS(zipfile = "./data/GCCSA_2021_AUST_SHP_GDA2020.zip"),
+          input.field = "GCC_NAME21", input.name = "Greater Melbourne",
+          output.filename = "2GMEL", outputCrs = 7899)
+getRegion(input.file = read_zipped_GIS(zipfile = "./data/GCCSA_2021_AUST_SHP_GDA2020.zip"),
+          input.field = "GCC_NAME21", input.name = "Rest of Vic.",
+          output.filename = "2RVIC", outputCrs = 7899)
+Vic <- st_union(st_read("./data/2GMEL.sqlite"), st_read("./data/2RVIC.sqlite")) %>%
+  dplyr::select()
+st_write(Vic, "./data/victoria.sqlite")
+unlink("./data/2GMEL.sqlite")
+unlink("./data/2RVIC.sqlite")
 
 
 # 2 Elevation from whole of state file ----

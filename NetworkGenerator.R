@@ -28,6 +28,7 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
 
   if (city == "Bendigo") {
     region = "./data/greater_bendigo.sqlite"
+    surroundingRegion = "./data/victoria.sqlite"
     outputCrs = 7899
     osmGpkg = "./output/bendigo_osm.gpkg"
     unconfiguredSqlite = "./output/bendigo_network_unconfigured.sqlite"
@@ -47,6 +48,7 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
 
   } else if (city == "Melbourne") {
     region = "./data/greater_melbourne.sqlite"
+    surroundingRegion = "./data/victoria.sqlite"
     outputCrs = 7899
     osmGpkg = "./output/melbourne_osm.gpkg"
     unconfiguredSqlite = "./output/melbourne_network_unconfigured.sqlite"
@@ -178,13 +180,14 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   # Downloading OSM
   if (downloadOsm) {
     echo(paste0("Downloading OSM extract for ", city, "\n"))
-    getOsmExtract(region, outputCrs, regionBufferDist, osmGpkg, retainDownload)
+    getOsmExtract(region, surroundingRegion, outputCrs, 
+                  regionBufferDist, osmGpkg, retainDownload)
   }
   
   # Processing OSM, or loading existing layers if not required
   if(networkFromOsm) {
     echo(paste0("Starting to process osm extract file, ", osmGpkg, "\n"))
-    networkUnconfiguredOutputs <- processOsm(osmGpkg, outputCrs)
+    networkUnconfiguredOutputs <- processOsm(osmGpkg, region, regionBufferDist, outputCrs)
     
     if (saveUnconfigured) {
       if (file_exists(unconfiguredSqlite)) st_delete(unconfiguredSqlite)

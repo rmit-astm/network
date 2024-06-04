@@ -1,6 +1,6 @@
 # function to convert OSM .gpkg file into network of nodes and edges
 
-processOsm <- function(osmGpkg, outputCrs) {
+processOsm <- function(osmGpkg, region, regionBufferDist = 10000, outputCrs) {
   
   # osmGpkg = "./output/bendigo_osm.gpkg"
   # osmGpkg = "./output/melbourne_osm.gpkg"
@@ -16,6 +16,16 @@ processOsm <- function(osmGpkg, outputCrs) {
     st_set_geometry("geom")
   
   
+  # read in and region and buffer by selected distance (eg 10km)
+  # -----------------------------------#
+  region.poly <- st_read(region)
+  if (st_crs(region.poly)$epsg != outputCrs) {
+    region.poly <- st_transform(region.poly, outputCrs)
+  }
+  region.buffer <- st_buffer(region.poly, regionBufferDist) %>%
+    st_snap_to_grid(1)
+  
+
   # paths and intersections
   # -----------------------------------#
 
@@ -38,8 +48,16 @@ processOsm <- function(osmGpkg, outputCrs) {
     # add bridge/tunnel column (0 for neither, 1 for bridge, 2 for tunnel)
     mutate(bridge_tunnel = case_when(str_detect(other_tags, "bridge") ~ 1,
                                       str_detect(other_tags, "tunnel") ~ 2,
-                                      TRUE ~ 0))
+                                      TRUE ~ 0)) 
   
+  # exclude minor roads outside study region
+  excluded.paths <- paths %>%
+    st_filter(region.buffer, .predicate = st_disjoint) %>%
+    filter(!highway %in% c("motorway", "motorway_link", "trunk", "trunk_link",
+                           "primary", "primary_link", "secondary", "secondary_link"))
+  paths <- paths %>%
+    filter(!osm_id %in% excluded.paths$osm_id)
+
   # temp dev notes, comparing to processOSM.sh (SP)
   # (1) I did not remove other_tags LIKE 'busbar'; these are electrical facilities, 
   #     but they are all highway=NA, so are removed anyway 
@@ -50,6 +68,7 @@ processOsm <- function(osmGpkg, outputCrs) {
   # (4) some paths have a 'level' or 'layer' tag that could be used to separate
   #     out different levels; however these are mostly within shopping centres
   #     or multi-storey carparks, and probably aren't of much interest to us
+  # (5) the exclusion of minor roads outside the study area is new
   
   
   # find intersections, but excluding any on different levels as

@@ -10,6 +10,7 @@ Download the following files (as required) for the relevant network location.
 | File                     | Description                                       |
 |--------------------------|---------------------------------------------------|
 | greater_bendigo.sqlite   | Boundary of the Greater Bendigo Local Government Area |
+| victoria.sqlite          | Boundary of Victoria                              |
 | dem_bendigo.tif          | Digital elevation model data for the Greater Bendigo area |
 | NDVI_Bendigo_2023.tif    | NDVI data for the Greater Bendigo area              |
 | TCC_Bendigo_5m.tif       | Tree canopy cover data for the Greater Bendigo area |
@@ -20,6 +21,7 @@ Download the following files (as required) for the relevant network location.
 | File                     | Description                                       |
 |--------------------------|---------------------------------------------------|
 | greater_melbourne.sqlite | Boundary of the Greater Melbourne Greater Capital City Statistical Area |
+| victoria.sqlite          | Boundary of Victoria                              |
 | dem_melbourne.tif        | Digital elevation model data for the Greater Melbourne area |
 | NDVI_Melbourne_2023.tif  | NDVI data for the Greater Melbourne area        |
 | gtfs.zip                 | GTFS feed for Victoria as at 20 October 2023      |
