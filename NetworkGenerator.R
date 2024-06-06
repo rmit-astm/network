@@ -8,9 +8,13 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   
   # CITY PARAMETERS
   # City parameters to be set
-  # •	region: if 'downloadOsm=T', file delineating the boundary of the area for 
-  #   which Osm extract is to be downloaded (assumed to be in sqlite format 
-  #   with a single layer)
+  # •	region: sqlite file defining boundary of the area for which the OSM 
+  #   extract is required, to be used for fully-detailed road and public 
+  #   transport network and extracted destinations
+  # •	surroundingRegion: sqlite file defining boundary of a wider area for 
+  #   which the OSM extract is required (eg state), to be used for sparser wide 
+  #   road and public transport network (if not required, then make this the 
+  #   same as 'region')
   # •	outputCrs: desired coordinate system for network
   # •	osmGpkg: location where downloaded OSM extract for region is to be stored
   #   (if 'downloadOsm=T') and/or read from (if 'processOsm=T')
