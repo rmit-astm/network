@@ -282,12 +282,16 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   
   # adding destinations layer
   if (addDestinationLayer) {
-    if (city == "Bendigo" & addBendigoData) {
-      localDestinations <- getDestinationsBendigo(bendigoParking,
-                                                  bendigoParkingPoly,
-                                                  bendigoParkingLine,
-                                                  bendigoBikeRacks,
-                                                  outputCrs)
+    if (city == "Bendigo") {
+      if (addBendigoData) {
+        localDestinations <- getDestinationsBendigo(bendigoParking,
+                                                    bendigoParkingPoly,
+                                                    bendigoParkingLine,
+                                                    bendigoBikeRacks,
+                                                    outputCrs)
+      } else {
+        localDestinations <- NULL
+      }
     } else {
       localDestinations <- NULL
     }
@@ -364,20 +368,22 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   }
   
   # Adding Bendigo 'everyday routes' and 'proposed protected routes' as link attributes
-  if (city == "Bendigo" & addBendigoData) {
-    networkOneway[[2]] <- addBendigoEverydayRoutes(networkOneway[[1]],
-                                                   networkOneway[[2]],
-                                                   bendigoEverydayRoutes,
-                                                   outputCrs)
-    networkOneway[[2]] <- 
-      addBendigoProposedProtected(networkOneway[[1]],
-                                  networkOneway[[2]],
-                                  bendigoProposedProtected,
-                                  defaults_df,
-                                  addNDVI, ndviFile, ndviBuffDist, 
-                                  addTreeCanopyCover, treeCanopyCoverFile,
-                                  addElevation,
-                                  outputCrs) 
+  if (city == "Bendigo") {
+    if (addBendigoData) {
+      networkOneway[[2]] <- addBendigoEverydayRoutes(networkOneway[[1]],
+                                                     networkOneway[[2]],
+                                                     bendigoEverydayRoutes,
+                                                     outputCrs)
+      networkOneway[[2]] <- 
+        addBendigoProposedProtected(networkOneway[[1]],
+                                    networkOneway[[2]],
+                                    bendigoProposedProtected,
+                                    defaults_df,
+                                    addNDVI, ndviFile, ndviBuffDist, 
+                                    addTreeCanopyCover, treeCanopyCoverFile,
+                                    addElevation,
+                                    outputCrs) 
+    }
   }
   
   
