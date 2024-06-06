@@ -3,7 +3,9 @@ addGtfsLinks <- function(outputLocation,
                          links,
                          gtfs_feed, 
                          analysis_date,
-                         studyRegion=NA,
+                         region,
+                         surroundingRegion,
+                         regionBufferDist,
                          outputCrs,
                          onroadBus,
                          city){
@@ -13,7 +15,9 @@ addGtfsLinks <- function(outputLocation,
   # links = networkOneway[[2]]
   # gtfs_feed = "./data/gtfs.zip"
   # analysis_date = as.Date("2023-11-15","%Y-%m-%d")
-  # studyRegion = st_read(region, quiet=T) %>% st_buffer(regionBufferDist) %>% st_snap_to_grid(1)
+  # region = "./data/greater_bendigo.sqlite"
+  # surroundingRegion = "./data/victoria.sqlite"
+  # regionBufferDist=10000
   # outputCrs = 7899
   # onroadBus = T
   
@@ -36,7 +40,9 @@ addGtfsLinks <- function(outputLocation,
                                networkNodes = validRoadNodes,
                                gtfs_feed,
                                analysis_date,
-                               studyRegion,
+                               region,
+                               surroundingRegion,
+                               regionBufferDist,
                                outputCrs,
                                onroadBus)
   
@@ -75,7 +81,9 @@ processGtfs <- function(outputLocation = "./output/generated_network/pt/",
                         networkNodes,
                         gtfs_feed, 
                         analysis_date,
-                        studyRegion = NA,
+                        region,
+                        surroundingRegion,
+                        regionBufferDist,
                         outputCrs,
                         onroadBus){
   
@@ -115,7 +123,7 @@ processGtfs <- function(outputLocation = "./output/generated_network/pt/",
     filter(service_type!="null") %>%  # eg skybus
     mutate(route_id=as.factor(route_id)) %>%
     mutate(service_type=as.factor(service_type)) %>%
-    dplyr::select(route_id,service_type)
+    dplyr::select(route_id,service_type,agency_id)
   
   # some trips won't have any valid routes, so they must be removed
   validTrips <- validTrips %>%
@@ -147,13 +155,6 @@ processGtfs <- function(outputLocation = "./output/generated_network/pt/",
     st_transform(outputCrs) %>%
     st_snap_to_grid(1)
   
-  # only want stops within the study region
-  if(!is.na(studyRegion)[1]) {
-    message("Cropping GTFS to study region")
-    validStops <- validStops %>%
-      filter(lengths(st_intersects(., studyRegion)) > 0)
-  }
-  
   # remove any duplicate stop id's (which shouldn't exist); they may have
   # different geometries; just keep the first of any duplicates
   validStops <- validStops %>% group_by(stop_id) %>% slice(1) %>% ungroup()
@@ -166,10 +167,38 @@ processGtfs <- function(outputLocation = "./output/generated_network/pt/",
     left_join(., validTrips %>% dplyr::select(trip_id, route_id) %>% distinct(), 
               by = "trip_id") %>%
     left_join(., validRoutes, by = "route_id") %>%
-    distinct(stop_id, service_type)
+    distinct(stop_id, service_type, agency_id)
   
   validStops <- validStops %>%
     left_join(serviceTable, by = "stop_id")
+  
+  # keep all stops within study area, and Vline &regional coach/bus only in surrounding area
+  # load region and buffer by selected distance (eg 10km)
+  message("Cropping GTFS to study region")
+  region.poly <- st_read(region)
+  if (st_crs(region.poly)$epsg != outputCrs) {
+    region.poly <- st_transform(region.poly, outputCrs)
+  }
+  region.buffer <- st_buffer(region.poly, regionBufferDist) %>%
+    st_snap_to_grid(1)
+  
+  # load surrounding region and buffer by selected distance (eg 10km)
+  surroundingRegion.poly <- st_read(surroundingRegion)
+  if (st_crs(surroundingRegion.poly)$epsg != outputCrs) {
+    surroundingRegion.poly <- st_transform(surroundingRegion.poly, outputCrs)
+  }
+  surroundingRegion.buffer <- st_buffer(surroundingRegion.poly, regionBufferDist) %>%
+    st_snap_to_grid(1)
+  
+  # select only stops within region/surrounding region
+  regionStops <- validStops %>%
+    st_filter(st_buffer(region.buffer, regionBufferDist), .predicate = st_intersects)
+  surroundingRegionStops <- validStops %>%
+    st_filter(st_buffer(surroundingRegion.buffer, regionBufferDist, .predicate = st_intersects)) %>%
+    filter(agency_id %in% c(1, 5, 6))  # 1 = vline; 5/6 = regional coach/bus
+  validStops <- bind_rows(regionStops, surroundingRegionStops) %>%
+    group_by(stop_id) %>% slice(1) %>% ungroup()
+
 
   if (onroadBus & "shapes" %in% names(gtfs)) {
     
@@ -180,7 +209,6 @@ processGtfs <- function(outputLocation = "./output/generated_network/pt/",
                                             nodes, 
                                             links, 
                                             validRoutes,
-                                            studyRegion,
                                             outputCrs)
     shape.nodes <- shape.subnetwork[[1]]
     shape.links <- shape.subnetwork[[2]]
@@ -291,7 +319,10 @@ processGtfs <- function(outputLocation = "./output/generated_network/pt/",
     filter(id!=lag(id) | row_number()==1) %>%
     mutate(stop_sequence=row_number()) %>%
     ungroup() %>%
-    dplyr::select(trip_id,stop_sequence,arrival_time,departure_time,stop_id,id,x,y,service_type)
+    dplyr::select(trip_id,stop_sequence,arrival_time,departure_time,stop_id,id,x,y,service_type) %>%
+    # add flag for whether stop is in buffered region or not (so that onroadbus 
+    # routing can be used where within region)
+    mutate(region_stop = ifelse(stop_id %in% regionStops$stop_id, 1, 0))
   
   # some trips will no longer be present
   validTripsSnapped <- validTrips %>%
@@ -468,9 +499,9 @@ exportGtfsSchedule <- function(links,
       # link id: service type plus an identifying number
       mutate(link_id = paste0(service_type, "_",
                               formatC(row_number(), digits=0, width=5, flag="0", format="d"))) %>%
-      # update link id for buses: first link in the chain
+      # update link id for buses that have a link chain: first link in the chain
       rowwise() %>%
-      mutate(link_id = if_else(service_type == "bus" & from_id != to_id, 
+      mutate(link_id = if_else(service_type == "bus" & from_id != to_id & !(is.na(link_ids)),
                                unlist(str_split(link_ids, ", "))[1],
                                link_id)) %>%
       ungroup()
@@ -774,7 +805,6 @@ makeShapeSubnetwork <- function(gtfs,
                                 nodes, 
                                 links, 
                                 validRoutes,
-                                studyRegion = NA,
                                 outputCrs) {
 
   # convert shapes to sf, and filter to bus
@@ -782,12 +812,6 @@ makeShapeSubnetwork <- function(gtfs,
     .$shapes %>% 
     st_transform(outputCrs) %>%
     st_snap_to_grid(1)
-  
-  # limit to study area (note - this crops shapes at edge of study area)
-  if (!is.na(studyRegion)[1]) {
-    shapes <- shapes %>%
-      st_intersection(., studyRegion %>% st_geometry())
-  }
   
   # filter to bus shapes only
   bus.shapes <- shapes %>%
@@ -843,7 +867,7 @@ makeShapeSubnetwork <- function(gtfs,
 
 
 # function to find route between pairs of nodes representing adjacent stops on 
-# a bus route - only used where onroadBus = T
+# a bus route (where the route is within the region) - only used where onroadBus = T
 findNodePairRoutes <- function(stopTimes, 
                                trips, 
                                routes, 
@@ -858,7 +882,11 @@ findNodePairRoutes <- function(stopTimes,
                            .$trip_id)) %>%
     # add next stop ID if it's the same trip (note - these 'stop_ids' are node id's not gtfs id's)
     mutate(next_stop_id = ifelse(trip_id == lead(trip_id),
-                                 lead(stop_id), NA)) %>%
+                                 lead(stop_id), NA),
+           next_stop_region = ifelse(trip_id == lead(trip_id),
+                                     lead(region_stop), NA)) %>%
+    # filter to where at least one stop is in region
+    filter(region_stop == 1 | next_stop_region == 1) %>%
     distinct(stop_id, next_stop_id) %>%
     filter(!is.na(next_stop_id)) 
   

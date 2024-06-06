@@ -341,27 +341,15 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   # Adding PT pseudo-network based on GTFS
   # Adjust your analysis date and gtfs feed name above
   if (addGtfs) {
-    # Adjust these parameters based on your GTFS file
-    if (file.exists(region)) {
-      # read in the study region boundary 
-      echo("Using Region file for GTFS processing\n")
-      region.poly <- st_read(region)
-      if (st_crs(region.poly)$epsg != outputCrs) {
-        region.poly <- st_transform(region.poly, outputCrs)
-      }
-      studyRegion <- st_buffer(region.poly, regionBufferDist)  %>%
-        st_snap_to_grid(1)
-    } else {
-      echo("Region file was not found, skipping\n")
-      studyRegion = NA
-    }
     system.time(
       networkOneway[[2]] <- addGtfsLinks(outputLocation = paste0(outputDir,"/pt/"),
                                          nodes = networkOneway[[1]], 
                                          links = networkOneway[[2]],
                                          gtfs_feed,
                                          analysis_date,
-                                         studyRegion,
+                                         region,
+                                         surroundingRegion,
+                                         regionBufferDist,
                                          outputCrs,
                                          onroadBus,
                                          city)) 
