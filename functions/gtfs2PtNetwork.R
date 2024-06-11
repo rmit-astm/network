@@ -192,9 +192,9 @@ processGtfs <- function(outputLocation = "./output/generated_network/pt/",
   
   # select only stops within region/surrounding region
   regionStops <- validStops %>%
-    st_filter(st_buffer(region.buffer, regionBufferDist), .predicate = st_intersects)
+    st_filter(region.buffer, .predicate = st_intersects)
   surroundingRegionStops <- validStops %>%
-    st_filter(st_buffer(surroundingRegion.buffer, regionBufferDist, .predicate = st_intersects)) %>%
+    st_filter(surroundingRegion.buffer, .predicate = st_intersects) %>%
     filter(agency_id %in% c(1, 5, 6))  # 1 = vline; 5/6 = regional coach/bus
   validStops <- bind_rows(regionStops, surroundingRegionStops) %>%
     group_by(stop_id) %>% slice(1) %>% ungroup()
@@ -539,18 +539,18 @@ exportGtfsSchedule <- function(links,
   # making tables for XML
   
   # ./data/transitVehicles.xml: vehicle
-  # id is just the trip_id. This means we can potentially have a different vehicle 
+  # id is just the trip_id. This means we can potentially have a different vehicle
   # for each trip. Have also set the vehicle type here.
   vehicles <- vehicleTripMatching %>%
     dplyr::select(id=trip_id,service_type) %>%
     arrange(id,service_type) %>%
     as.data.frame()
-  
+
   # ./data/transitSchedule.xml: transitSchedule > transitStops
   transitStops <- ptNetwork_StopsAndEdges %>%
     st_drop_geometry() %>%
     dplyr::select(stop_id,linkRefId=link_id,x=from_x,y=from_y)
-  
+
   # ./data/transitSchedule.xml: transitSchedule > transitRoute > routeProfile
   # ./data/transitSchedule.xml: transitSchedule > transitRoute > route
   # * trip_id is the transitRoute (i.e., each trip is its own route, with a single
@@ -559,9 +559,9 @@ exportGtfsSchedule <- function(links,
   routeProfile <- ptNetworkRoutes %>%
     dplyr::select(transitRouteId=route_id_new, refId=stop_id,arrivalOffset,
                   departureOffset,linkRefId=link_id, any_of("link_ids"),service_type)
-  
+
   # ./data/transitSchedule.xml: transitSchedule > transitRoute > departures
-  # vehicleRefId is just the trip_id. This means we can potentially have a 
+  # vehicleRefId is just the trip_id. This means we can potentially have a
   # different vehicle for each trip. I have also set the vehicle type here.
   departures <- ptNetworkDepartures %>%
     # mutate(departure_time=as.character(as.hms(departure_time))) %>%
@@ -578,7 +578,7 @@ exportGtfsSchedule <- function(links,
     dplyr::select(transitRouteId=route_id_new,departureId=departure_id,
                   departureTime=departure_time,vehicleRefId,type,serviceType=service_type) %>%
     as.data.frame()
-  
+
   # Types of vehicles to place in the network - TO BE REVIEWED
   vehicleTypes <- tribble(
     ~id, ~service_type, ~seats, ~standingRoom, ~length, ~accessTime, ~egressTime, ~passengerCarEquivalents,
@@ -586,7 +586,7 @@ exportGtfsSchedule <- function(links,
     2  , "bus"        , 25    , 13           , 15     , "0.0"      , "0.0"      , 0.25                    ,
     3  , "tram"       , 16    , 50           , 30     , "0.0"      , "0.0"      , 0.25
   )
-  
+
   echo("writing transitVehicles.xml\n")
   outxml<-paste0(outputLocation,"transitVehicles.xml")
   # transitVehicles
@@ -622,13 +622,13 @@ exportGtfsSchedule <- function(links,
     if (i%%50==0 || i==nrow(departures)) printProgress(i,nrow(departures),' Vehicles')
   }
   cat(paste0("</vehicleDefinitions>\n"),file=outxml,append=TRUE)
-  
-  
-  
+
+
+
   echo("writing transitSchedule.xml\n")
   outxml<-paste0(outputLocation,"transitSchedule.xml")
   str<-""
-  
+
   # transitSchedule
   cat(
     "<?xml version=\"1.0\" ?>
@@ -636,14 +636,14 @@ exportGtfsSchedule <- function(links,
     <transitSchedule>
     <transitStops>\n",
     file=outxml,append=FALSE)
-  
+
   echo("writing transitStops\n")
   for (i in 1:nrow(transitStops)) {
     # for (i in 1:100) {
     str<-paste0(str,
                 "    <stopFacility id=\"",transitStops[i,]$stop_id,"\" isBlocking=\"false\" linkRefId=\"",
                 transitStops[i,]$linkRefId,"\" x=\"",transitStops[i,]$x,"\" y=\"",transitStops[i,]$y,"\"/>\n")
-    
+
     if (i%%writeInterval==0 || i==nrow(transitStops)) {
       cat(str,file=outxml,append=TRUE)
       str<-"" # clear the buffer after writing it out
@@ -653,13 +653,13 @@ exportGtfsSchedule <- function(links,
   }
   cat(paste0("  </transitStops>\n"),file=outxml,append=TRUE)
   cat(paste0("  <transitLine id=\"",city,"\">\n"),file=outxml,append=TRUE)
-  
+
   echo("writing vehicleTripMatching\n")
   str<-""
   writeInterval<-100
-  
+
   transitRoutes<-routeProfile$transitRouteId%>%unique()%>%sort()
-  
+
   for (i in 1:length(transitRoutes)) {
     # for (i in 1:100) {
     routeProfileCurrent <- routeProfile[routeProfile$transitRouteId==transitRoutes[i],]
@@ -669,8 +669,8 @@ exportGtfsSchedule <- function(links,
       str<-paste0(str,"      <description>",departuresCurrent[1,]$type,"</description>\n")
       str<-paste0(str,"      <transportMode>",departuresCurrent[1,]$serviceType,"</transportMode>\n")  ### HERE
       str<-paste0(str,"      <routeProfile>\n")
-      
-      for (j in 1:nrow(routeProfileCurrent)) { 
+
+      for (j in 1:nrow(routeProfileCurrent)) {
         # first row: no arrival offset
         # <stop awaitDeparture="true" departureOffset="departureOffset" refId="refId">
         if (j == 1) str<-paste0(str,"        <stop awaitDeparture=\"true\" departureOffset=\"",
@@ -722,7 +722,7 @@ exportGtfsSchedule <- function(links,
         }
       }
       str<-paste0(str,"      </route>\n")
-      
+
       str<-paste0(str,"      <departures>\n")
       for (k in 1:nrow(departuresCurrent)) {
         str<-paste0(str,"        <departure departureTime=\"",
@@ -732,11 +732,11 @@ exportGtfsSchedule <- function(links,
                     "\" vehicleRefId=\"",
                     departuresCurrent[k,]$vehicleRefId,
                     "\"/>\n")
-      }   
+      }
       str<-paste0(str,"      </departures>\n")
       str<-paste0(str,"    </transitRoute>\n")
     }
-    
+
     if (i%%writeInterval==0 || i==length(transitRoutes)) {
       cat(str,file=outxml,append=TRUE)
       str<-"" # clear the buffer after writing it out
