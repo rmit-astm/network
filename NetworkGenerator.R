@@ -378,6 +378,11 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   # douglas-peucker algorithm) but ensure that endpoints remain unchanged
   system.time(networkOneway[[2]] <- simplifyLinkAppearance(networkOneway[[2]],
                                                            dTolerance = 20))
+
+  # Add LTS (using assumed traffic volumes)
+  # Will be updated once simulated traffic volumes are available
+  networkOneway <- addLTSAssumedTraffic(list(networkOneway[[1]], 
+                                             networkOneway[[2]]))
   
   networkFinal <- networkOneway
   

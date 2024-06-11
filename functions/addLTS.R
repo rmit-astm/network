@@ -150,3 +150,26 @@ addLTS <- function(nodes_current, edges_current) {
 
   return(list(nodes_current, edges_current))
 }
+
+
+# simplified version of 'addImpedances' which only adds LTS, based on assumed traffic
+addLTSAssumedTraffic <- function(input.network) {
+  
+  # input.network <- networkOneway
+  
+  echo("Adding level of traffic stress, based on assumed traffic volumes\n")
+  
+  input.nodes <- input.network[[1]]
+  input.links <- input.network[[2]]
+  
+  input.links.with.assumed.traffic <- addAssumedTraffic(input.nodes,
+                                                        input.links)
+  
+  network.with.LTS <- addLTS(input.links.with.assumed.traffic[[1]],
+                             input.links.with.assumed.traffic[[2]])
+  
+  return(list(network.with.LTS[[1]],
+              network.with.LTS[[2]]))
+  
+}
+
