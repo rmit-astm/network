@@ -22,7 +22,14 @@ makeDisplayLayers <- function() {
                      "living_street", "service")    ~ "local",
       TRUE                                          ~ "offroad"
     )) %>%
-    dplyr::select(highway_type)
+    mutate(display_order = case_when(
+      highway_type == "motorway"  ~ 1,
+      highway_type == "arterial"  ~ 2, 
+      highway_type == "collector" ~ 3,
+      highway_type == "local"     ~ 4,
+      highway_type == "offroad"   ~ 5
+    )) %>%
+    dplyr::select(highway_type, display_order)
   
   cycling_offroad_path <- links %>%
     filter(cycleway %in% c("bikepath", "shared_path")) %>%
@@ -88,7 +95,7 @@ makeDisplayLayers <- function() {
   canopy_cover <- links %>%
     filter(!(highway %in% c("bus", "train"))) %>%
     mutate(canopy_cover = case_when(
-      tcc_percent <= 10 ~ "Up to 10%",
+      tcc_percent <= 10 ~ "Up to 10% (or outside Bendigo)",
       tcc_percent <= 25 ~ "> 10% up to 25%",
       tcc_percent <= 50 ~ "> 25% up to 50%",
       tcc_percent > 50  ~ "> 50%"
@@ -101,7 +108,6 @@ makeDisplayLayers <- function() {
     dplyr::select(lvl_traf_stress)
   
   public_transport <- links %>%
-    filter(highway != "bus") %>%
     mutate(public_transport = case_when(
       modes == "train"         ~ "train",
       str_detect(modes, "bus") ~ "bus",
