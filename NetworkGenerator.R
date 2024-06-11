@@ -374,6 +374,10 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
     }
   }
   
+  # Simplify appearance of links to avoid short segments (using
+  # douglas-peucker algorithm) but ensure that endpoints remain unchanged
+  system.time(networkOneway[[2]] <- simplifyLinkAppearance(networkOneway[[2]],
+                                                           dTolerance = 20))
   
   networkFinal <- networkOneway
   
