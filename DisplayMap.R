@@ -4,33 +4,18 @@ makeDisplayLayers <- function() {
   library(sf)
   library(tidyverse)
   
-  # load network (working directory assumed to be 'network-astm')
-  links <- st_read("./output/bendigo_network/network.sqlite", layer = "links")
-  nodes <- st_read("./output/bendigo_network/network.sqlite", layer = "nodes")
+  # load network (working directory assumed to be 'network-astm'), and intersect with buffered region
+  study.area <- st_read("./data/greater_bendigo.sqlite") %>%
+    st_buffer(10000) %>%
+    dplyr::select()
+  statewide.links <- st_read("./output/bendigo_network/network.sqlite", layer = "links")
+  links <- statewide.links %>%
+    st_filter(study.area, .predicate = st_intersects)
+  nodes <- st_read("./output/bendigo_network/network.sqlite", layer = "nodes") %>%
+    st_intersection(., study.area)
   destinations <- st_read("./output/bendigo_network/network.sqlite", layer = "destinations")
   
   # simple links layers
-  highway_type <- links %>%
-    filter(!(highway %in% c("bus", "train"))) %>%
-    mutate(highway_type = case_when(
-      highway %in% c("motorway", "motorway_link")   ~ "motorway",
-      highway %in% c("trunk", "trunk_link", 
-                     "primary", "primary_link", 
-                     "secondary", "secondary_link") ~ "arterial",
-      highway %in% c("tertiary", "tertiary_link")   ~ "collector",
-      highway %in% c("residential", "road", "unclassified",
-                     "living_street", "service")    ~ "local",
-      TRUE                                          ~ "offroad"
-    )) %>%
-    mutate(display_order = case_when(
-      highway_type == "motorway"  ~ 1,
-      highway_type == "arterial"  ~ 2, 
-      highway_type == "collector" ~ 3,
-      highway_type == "local"     ~ 4,
-      highway_type == "offroad"   ~ 5
-    )) %>%
-    dplyr::select(highway_type, display_order)
-  
   cycling_offroad_path <- links %>%
     filter(cycleway %in% c("bikepath", "shared_path")) %>%
     dplyr::select(cycleway)
@@ -56,6 +41,13 @@ makeDisplayLayers <- function() {
   everyday_ride_shared_paths <- links %>%
     filter(bend_everyday_type == "Shared Path / Protected Cycleway") %>%
     dplyr::select(shared_path = bend_everyday_type)
+  
+  bikelane_project_tags <- links %>%
+    filter(!is.na(bikelaneleft) | !is.na(bikelaneright) |
+             !is.na(bikelaneleftwidth) | !is.na(bikelanerightwidth) |
+             !is.na(bikelanelefttraf) | !is.na(bikelanerighttraf)) %>%
+    dplyr::select(bikelaneleft, bikelaneright, bikelaneleftwidth,
+                  bikelanerightwidth, bikelanelefttraf, bikelanerighttraf)
   
   speed_limit <- links %>%
     filter(!(highway %in% c("bus", "train"))) %>%
@@ -95,7 +87,7 @@ makeDisplayLayers <- function() {
   canopy_cover <- links %>%
     filter(!(highway %in% c("bus", "train"))) %>%
     mutate(canopy_cover = case_when(
-      tcc_percent <= 10 ~ "Up to 10% (or outside Bendigo)",
+      tcc_percent <= 10 ~ "Up to 10%",
       tcc_percent <= 25 ~ "> 10% up to 25%",
       tcc_percent <= 50 ~ "> 25% up to 50%",
       tcc_percent > 50  ~ "> 50%"
@@ -113,7 +105,45 @@ makeDisplayLayers <- function() {
       str_detect(modes, "bus") ~ "bus",
       TRUE                     ~ "none"
     )) %>%
+    filter(public_transport %in% c("train", "bus")) %>%
     dplyr::select(public_transport)
+  
+  highway_type <- links %>%
+    filter(!(highway %in% c("bus", "train", "footway"))) %>%
+    mutate(highway_type = case_when(
+      highway %in% c("motorway", "motorway_link")   ~ "motorway",
+      highway %in% c("trunk", "trunk_link", 
+                     "primary", "primary_link", 
+                     "secondary", "secondary_link") ~ "arterial",
+      highway %in% c("tertiary", "tertiary_link")   ~ "collector",
+      highway %in% c("residential", "road", "unclassified",
+                     "living_street", "service")    ~ "local",
+      TRUE                                          ~ "offroad"
+    )) %>%
+    dplyr::select(highway_type)
+  
+  statewide_arterial_roads <- statewide.links %>%
+    filter(highway %in% c("motorway", "motorway_link", "trunk", "trunk_link",
+                          "primary", "primary_link", "secondary", "secondary_link")) %>%
+    mutate(highway_type = case_when(
+      highway %in% c("motorway", "motorway_link")   ~ "motorway",
+      highway %in% c("trunk", "trunk_link", 
+                     "primary", "primary_link", 
+                     "secondary", "secondary_link") ~ "arterial"
+    )) %>%
+    dplyr::select(highway_type)
+  
+  statewide_public_transport <- statewide.links %>%
+    mutate(public_transport = case_when(
+      modes == "train"         ~ "train",
+      str_detect(modes, "bus") ~ "bus",
+      TRUE                     ~ "none"
+    )) %>%
+    filter(public_transport %in% c("train", "bus")) %>%
+    dplyr::select(public_transport)
+  
+    
+ 
   
   # simple nodes layer
   intersection_type <- nodes %>%
@@ -127,19 +157,22 @@ makeDisplayLayers <- function() {
   
   # write outputs
   output.file <- "./output/bendigo display.sqlite"
-  st_write(highway_type, output.file, layer = "highway_type", delete_layer = T)
   st_write(cycling_offroad_path, output.file, layer = "cycling_offroad_path", delete_layer = T)
   st_write(cycling_separated_lane, output.file, layer = "cycling_separated_lane", delete_layer = T)
   st_write(cycling_onroad_lane, output.file, layer = "cycling_onroad_lane", delete_layer = T)
   st_write(cycling_mixed_traffic, output.file, layer = "cycling_mixed_traffic", delete_layer = T)
   st_write(proposed_protected_network, output.file, layer = "proposed_protected_network", delete_layer = T)
   st_write(everyday_ride_shared_paths, output.file, layer = "everyday_ride_shared_paths", delete_layer = T)
+  st_write(bikelane_project_tags, output.file, layer = "bikelane_project_tags", delete_layer = T)
   st_write(speed_limit, output.file, layer = "speed_limit", delete_layer = T)
   st_write(lane_numbers, output.file, layer = "lane_numbers", delete_layer = T)
   st_write(slope, output.file, layer = "slope", delete_layer = T)
   st_write(canopy_cover, output.file, layer = "canopy_cover", delete_layer = T)
   st_write(level_of_traffic_stress, output.file, layer = "level_of_traffic_stress", delete_layer = T)
   st_write(public_transport, output.file, layer = "public_transport", delete_layer = T)
+  st_write(highway_type, output.file, layer = "highway_type", delete_layer = T)
+  st_write(statewide_arterial_roads, output.file, layer = "statewide_arterial_roads", delete_layer = T)
+  st_write(statewide_public_transport, output.file, layer = "statewide_public_transport", delete_layer = T)
   st_write(intersection_type, output.file, layer = "intersection_type", delete_layer = T)
   st_write(destination_layer, output.file, layer = "destinations", delete_layer = T)
   
