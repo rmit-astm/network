@@ -84,6 +84,11 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   saveUnconfigured=T
 
   # SIMPLIFICATION
+  # A flag for whether to simplify edges by combining edges between the same 
+  # nodes, simplifying chains of edges, and removing dangles (note: if T, then
+  # 'bike lane project' tags will not be collected when processing OSM tags,
+  # as the simplification functions are not configured for them)
+  simplifyEdges=F
   shortLinkLength=20
   minDangleLinkLengh=500
   crop2Area=F
@@ -168,6 +173,7 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   echo(paste0("- Downloading OSM extract:                        ", downloadOsm,"\n"))
   echo(paste0("- Processing the OSM extract:                     ", networkFromOsm,"\n"))
   echo(paste0("- Cropping to a test area:                        ", crop2Area,"\n"))
+  echo(paste0("- Simplifying edges:                              ", simplifyEdges, "\n"))
   echo(paste0("- Shortest link length in network simplification: ", shortLinkLength,"\n"))
   echo(paste0("- Adding elevation:                               ", addElevation,"\n"))
   echo(paste0("- Adding destination layer:                       ", addDestinationLayer,"\n"))
@@ -236,7 +242,10 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   defaults_df <- buildDefaultsDF()
   highway_lookup <- defaults_df %>% dplyr::select(highway, highway_order)
   echo("Processing OSM tags and joining with defaults\n")
-  system.time( osmAttributes <- processOsmTags(osm_metadata,defaults_df))
+  if (simplifyEdges) {
+    message("As 'simplifyEdges is True, OSM 'bike lane project' tags will not be extracted: the edge simplification functions are not configured for them.  If the 'bike lane project' tags are required, set 'simplfyEdges' to False.")
+  }
+  system.time( osmAttributes <- processOsmTags(osm_metadata, defaults_df, simplifyEdges))
   
   edgesAttributed <- networkUnconfigured[[2]] %>%
     inner_join(osmAttributes, by="osm_id") %>%
@@ -244,14 +253,61 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   
   # keep only the largest connected component
   largestComponent <- largestConnectedComponent(networkUnconfigured[[1]], edgesAttributed)
-  
-  # simplify intersections while preserving attributes and original geometry.
+
+  # simplify intersections while preserving attributes and original geometry
   system.time(intersectionsSimplified <- simplifyIntersections(largestComponent[[1]],
                                                                largestComponent[[2]],
                                                                shortLinkLength,
                                                                outputCrs))
   
-  networkMode <- addMode(intersectionsSimplified)
+  # simplify edges while preserving attributes and original geometry
+  if (simplifyEdges) {
+    # Merge edges going between the same two nodes, picking the shortest geometry.
+    # * One-way edges going in the same direction will be merged
+    # * Pairs of one-way edges in opposite directions will be merged into a two-way edge.
+    # * Two-way edges will be merged regardless of direction.
+    # * One-way edges will NOT be merged with two-way edges.
+    # * Non-car edges do NOT count towards the merged lane count (permlanes)
+    system.time(edgesCombined <- combineRedundantEdges(intersectionsSimplified[[1]],
+                                                       intersectionsSimplified[[2]],
+                                                       outputCrs))
+    
+    # Merge one-way and two-way edges going between the same two nodes. In these 
+    # cases, the merged attributes will be two-way.
+    # This guarantees that there will only be a single edge between any two nodes.
+    system.time(combinedUndirectedAndDirected <- 
+                  combineUndirectedAndDirectedEdges(edgesCombined[[1]],
+                                                    edgesCombined[[2]],
+                                                    outputCrs))
+    
+    # If there is a chain of edges between intersections, merge them together
+    system.time(edgesSimplified <- simplifyLines(combinedUndirectedAndDirected[[1]],
+                                                 combinedUndirectedAndDirected[[2]]))
+    
+    # Remove dangles
+    system.time(noDangles <- removeDangles(edgesSimplified[[1]],edgesSimplified[[2]],
+                                           minDangleLinkLengh))
+    
+    # Do a second round of simplification.
+    system.time(edgesCombined2 <- combineRedundantEdges(noDangles[[1]],
+                                                        noDangles[[2]],
+                                                        outputCrs))
+    system.time(combinedUndirectedAndDirected2 <- 
+                  combineUndirectedAndDirectedEdges(edgesCombined2[[1]],
+                                                    edgesCombined2[[2]],
+                                                    outputCrs))
+    
+    system.time(edgesSimplified2 <- simplifyLines(combinedUndirectedAndDirected2[[1]],
+                                                  combinedUndirectedAndDirected2[[2]]))
+    system.time(edgesCombined3 <- combineRedundantEdges(edgesSimplified2[[1]],
+                                                        edgesSimplified2[[2]],
+                                                        outputCrs))
+    
+    networkMode <- addMode(edgesCombined3)
+    
+  } else {
+    networkMode <- addMode(intersectionsSimplified)
+  }
 
   # ensure transport is a directed routeable graph for each mode (i.e., connected
   # subgraph). The first function ensures a connected directed subgraph and the

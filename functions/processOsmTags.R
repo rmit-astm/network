@@ -9,7 +9,7 @@
 # -               | no lane/track/path | 0              |
 #########################################################
 
-processOsmTags <- function(osm_df,this_defaults_df){
+processOsmTags <- function(osm_df, this_defaults_df, simplifyEdges){
   # osm_df <- osm_metadata
   # this_defaults_df <- defaults_df
   
@@ -87,8 +87,8 @@ processOsmTags <- function(osm_df,this_defaults_df){
         df$permlanes[1] = newLanes
       }
       
-      # add Melbourne Bikelane Project tags
-      df <- getBikelaneProjectTags(df, keys, values)
+      # add Melbourne Bikelane Project tags, if not simplifying edges
+      if (!simplifyEdges) df <- getBikelaneProjectTags(df, keys, values)
       
     }
     return(df)

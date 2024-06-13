@@ -192,7 +192,9 @@ cleanBikelaneColumns <- function(edges_current) {
   }
   
   for(column in bikelaneinfra_columns) {
-    edges_current[[column]] <- bikelaneinfra_clean(edges_current[[column]])
+    if (column %in% names(edges_current)) {
+      edges_current[[column]] <- bikelaneinfra_clean(edges_current[[column]])
+    }
   }
   
   return(edges_current)
