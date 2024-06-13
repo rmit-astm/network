@@ -24,17 +24,21 @@ simplifyLinkAppearance <- function(edges_current, dTolerance = 20) {
   last_coords <- coords[last_indices, ]
   
   # replace first and last coordinates with original start/endpoint geometry
-  first_coords <- cbind(first_coords[, "L1"], edges_current$fromx, edges_current$fromy)
-  last_coords <- cbind(last_coords[, "L1"], edges_current$tox, edges_current$toy)
+  first_coords[, c("X", "Y")] <- cbind(edges_current$fromx, edges_current$fromy)
+  last_coords[, c("X", "Y")] <- cbind(edges_current$tox, edges_current$toy)
   
   # combine modified first and last coordinates with the rest of the coordinates
   modified_coords <- coords
-  modified_coords[first_indices, c("X", "Y")] <- first_coords[, 2:3]
-  modified_coords[last_indices, c("X", "Y")] <- last_coords[, 2:3]
-
-  # create new geometries with the modified coordinates
-  new_geometries <- lapply(unique(line_ids), function(id) {
-    st_linestring(modified_coords[modified_coords[, "L1"] == id, c("X", "Y")])
+  modified_coords[first_indices, c("X", "Y")] <- first_coords[, c("X", "Y")]
+  modified_coords[last_indices, c("X", "Y")] <- last_coords[, c("X", "Y")]
+  
+  # create new geometries with the modified coordinates using split
+  split_coords <- split(modified_coords[, c("X", "Y")], line_ids)
+  new_geometries <- lapply(split_coords, function(x) {
+    # convert coordinates to matrix
+    mat <- matrix(x, ncol = 2)
+    # create linestring from matrix
+    st_linestring(mat)
   })
   
   # update the geometries in the simplified_edges object
