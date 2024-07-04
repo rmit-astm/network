@@ -90,6 +90,10 @@ processOsmTags <- function(osm_df, this_defaults_df, simplifyEdges){
       # add Melbourne Bikelane Project tags, if not simplifying edges
       if (!simplifyEdges) df <- getBikelaneProjectTags(df, keys, values)
       
+    } else {
+      # if no tags, then lanes is default number, multiplied by 2 if two-way
+      newLanes = ifelse(df$is_oneway[1] == 0, df$permlanes[1] * 2, df$permlanes[1])
+      df$permlanes[1] = newLanes
     }
     return(df)
   }
