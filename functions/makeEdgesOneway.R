@@ -91,8 +91,8 @@ makeEdgesOneway <- function(nodes_current, edges_current) {
   edges_current <- edges_current %>%
     mutate(link_id = row_number())
   
-  # clean up bikelane columns
-  edges_current <- cleanBikelaneColumns(edges_current)
+  # process bikelane columns
+  edges_current <- processBikelaneColumns(edges_current)
   
   return(list(nodes_current, edges_current))
 }
@@ -108,76 +108,99 @@ updateBikelaneEdges <- function(edges_current,
   # one-way edges and foward direction of two_way  
   if ("bikelaneFwdLeft" %in% colnames(edges_current)) {
     edges_current <- edges_current %>%
-      rename(bikelaneLeft = bikelaneFwdLeft)
-    if (!"bikelaneLeft" %in% required_fields) {
-      required_fields <- c(required_fields, "bikelaneLeft")
+      rename(bikelane_left = bikelaneFwdLeft)
+    if (!"bikelane_left" %in% required_fields) {
+      required_fields <- c(required_fields, "bikelane_left")
     }
   }
   if ("bikelaneFwdRight" %in% colnames(edges_current)) {
     edges_current <- edges_current %>%
-      rename(bikelaneRight = bikelaneFwdRight)
-    if (!"bikelaneRight" %in% required_fields) {
-      required_fields <- c(required_fields, "bikelaneRight")
+      rename(bikelane_right = bikelaneFwdRight)
+    if (!"bikelane_right" %in% required_fields) {
+      required_fields <- c(required_fields, "bikelane_right")
     }
   }
   if ("bikelaneWidthFwdLeft" %in% colnames(edges_current)) {
     edges_current <- edges_current %>%
-      rename(bikelaneLeftWidth = bikelaneWidthFwdLeft)
-    if (!"bikelaneLeftWidth" %in% required_fields) {
-      required_fields <- c(required_fields, "bikelaneLeftWidth")
+      rename(bikelane_left_width = bikelaneWidthFwdLeft)
+    if (!"bikelane_left_width" %in% required_fields) {
+      required_fields <- c(required_fields, "bikelane_left_width")
     }
   }
   if ("bikelaneWidthFwdRight" %in% colnames(edges_current)) {
     edges_current <- edges_current %>%
-      rename(bikelaneRightWidth = bikelaneWidthFwdRight)
-    if (!"bikelaneRightWidth" %in% required_fields) {
-      required_fields <- c(required_fields, "bikelaneRightWidth")
+      rename(bikelane_right_width = bikelaneWidthFwdRight)
+    if (!"bikelane_right_width" %in% required_fields) {
+      required_fields <- c(required_fields, "bikelane_right_width")
     }
   }
   if ("bikelaneTrafFwdLeft" %in% colnames(edges_current)) {
     edges_current <- edges_current %>%
-      rename(bikelaneLeftTraf = bikelaneTrafFwdLeft)
-    if (!"bikelaneLeftTraf" %in% required_fields) {
-      required_fields <- c(required_fields, "bikelaneLeftTraf")
+      rename(bikelane_left_traf = bikelaneTrafFwdLeft)
+    if (!"bikelane_left_traf" %in% required_fields) {
+      required_fields <- c(required_fields, "bikelane_left_traf")
     }
   }
   if ("bikelaneTrafFwdRight" %in% colnames(edges_current)) {
     edges_current <- edges_current %>%
-      rename(bikelaneRightTraf = bikelaneTrafFwdRight)
-    if (!"bikelaneRightTraf" %in% required_fields) {
-      required_fields <- c(required_fields, "bikelaneRightTraf")
+      rename(bikelane_right_traf = bikelaneTrafFwdRight)
+    if (!"bikelane_right_traf" %in% required_fields) {
+      required_fields <- c(required_fields, "bikelane_right_traf")
+    }
+  }
+  if ("bikelaneBuffFwdLeft" %in% colnames(edges_current)) {
+    edges_current <- edges_current %>%
+      rename(bikelane_left_buff = bikelaneBuffFwdLeft)
+    if (!"bikelane_left_buff" %in% required_fields) {
+      required_fields <- c(required_fields, "bikelane_left_buff")
+    }
+  }
+  if ("bikelaneBuffFwdRight" %in% colnames(edges_current)) {
+    edges_current <- edges_current %>%
+      rename(bikelane_right_buff = bikelaneBuffFwdRight)
+    if (!"bikelane_right_buff" %in% required_fields) {
+      required_fields <- c(required_fields, "bikelane_right_buff")
     }
   }
   
   # reverse direction of two-way
   if ("bikelaneRvsLeft" %in% colnames(edges_twoway_reversed)) {
     edges_twoway_reversed <- edges_twoway_reversed %>%
-      mutate(bikelaneLeft = bikelaneRvsLeft)
-    if (!"bikelaneLeft" %in% required_fields) {
-      required_fields <- c(required_fields, "bikelaneLeft")
+      mutate(bikelane_left = bikelaneRvsLeft)
+    if (!"bikelane_left" %in% required_fields) {
+      required_fields <- c(required_fields, "bikelane_left")
     }
   }
   if ("bikelaneWidthRvsLeft" %in% colnames(edges_twoway_reversed)) {
     edges_twoway_reversed <- edges_twoway_reversed %>%
-      mutate(bikelaneLeftWidth = bikelaneWidthRvsLeft)
-    if (!"bikelaneLeftWidth" %in% required_fields) {
-      required_fields <- c(required_fields, "bikelaneLeftWidth")
+      mutate(bikelane_left_width = bikelaneWidthRvsLeft)
+    if (!"bikelane_left_width" %in% required_fields) {
+      required_fields <- c(required_fields, "bikelane_left_width")
     }
   }
   if ("bikelaneTrafRvsLeft" %in% colnames(edges_twoway_reversed)) {
     edges_twoway_reversed <- edges_twoway_reversed %>%
-      mutate(bikelaneLeftTraf = bikelaneTrafRvsLeft)
-    if (!"bikelaneLeftTraf" %in% required_fields) {
-      required_fields <- c(required_fields, "bikelaneLeftTraf")
+      mutate(bikelane_left_traf = bikelaneTrafRvsLeft)
+    if (!"bikelane_left_traf" %in% required_fields) {
+      required_fields <- c(required_fields, "bikelane_left_traf")
+    }
+  }
+  if ("bikelaneBuffRvsLeft" %in% colnames(edges_twoway_reversed)) {
+    edges_twoway_reversed <- edges_twoway_reversed %>%
+      mutate(bikelane_left_buff = bikelaneBuffRvsLeft)
+    if (!"bikelane_left_buff" %in% required_fields) {
+      required_fields <- c(required_fields, "bikelane_left_buff")
     }
   }
   
   return(list(edges_current, edges_twoway_reversed, required_fields))
 } 
 
-# function to clean up bikelane columns
-cleanBikelaneColumns <- function(edges_current) {
-  bikelaneinfra_columns <- c("bikelaneLeft", "bikelaneRight")
+# function to process bikelane columns into required form
+processBikelaneColumns <- function(edges_current) {
+  
+  # clean infrastructure columns to simplify conflicting categories
+  bikelaneinfra_columns <- c("bikelane_left", "bikelane_right")
   
   bikelaneinfra_clean <- function(x) {
     # remove leading and trailing commas
@@ -192,11 +215,51 @@ cleanBikelaneColumns <- function(edges_current) {
     return(x)
   }
   
-  for(column in bikelaneinfra_columns) {
+  for (i in 1:length(bikelaneinfra_columns)) {
+    column <- bikelaneinfra_columns[i]
     if (column %in% names(edges_current)) {
       edges_current[[column]] <- bikelaneinfra_clean(edges_current[[column]])
     }
   }
   
+  # split traffic and buffer columns into left and right
+  bikelanetraffic_columns <- c("bikelane_left_traf", "bikelane_right_traf")
+  bikelanebuffer_columns <- c("bikelane_left_buff", "bikelane_right_buff")
+  cols_to_split <- c(bikelanetraffic_columns, bikelanebuffer_columns)
+  
+  for (i in 1:length(cols_to_split)) {
+    column <- cols_to_split[i]
+    
+    # new column names
+    left_col <- paste0(column, "_left")
+    right_col <- paste0(column, "_right")
+    
+    edges_current <- edges_current %>%
+      
+      # populate the new left and right columns
+      mutate(!!left_col := case_when(
+        # values for 'both' or 'left' tags
+        stringr::str_detect(!!sym(column), "both") ~ str_extract(!!sym(column), "(?<=both=)[^,]*"),  # from 'both=' up to following comma or end
+        stringr::str_detect(!!sym(column), "left") ~ str_extract(!!sym(column), "(?<=left=)[^,]*"),  # from 'left=' up to following comma or end
+        TRUE ~ NA
+      ),
+      !!right_col := case_when(
+        # values for 'both' or 'right' tags
+        stringr::str_detect(!!sym(column), "both") ~ str_extract(!!sym(column), "(?<=both=)[^,]*"),  # from 'both=' up to following comma or end
+        stringr::str_detect(!!sym(column), "right") ~ str_extract(!!sym(column), "(?<=right=)[^,]*"),  # from 'right=' up to following comma or end
+        TRUE ~ NA
+      )) %>%
+      
+      # remove the former column
+      dplyr::select(-!!sym(column))
+    
+    # convert buffer columns to numeric
+    if (column %in% bikelanebuffer_columns) {
+      edges_current <- edges_current %>%
+        mutate(!!left_col := as.numeric(!!sym(left_col)),
+               !!right_col := as.numeric(!!sym(right_col)))
+    }
+  }
+
   return(edges_current)
 }

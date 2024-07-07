@@ -309,6 +309,109 @@ getBikelaneProjectTags <- function(df, keys, values) {
     ifelse(is.null(bikelaneTrafRvsLeft), NA, 
            stringr::str_flatten(unique(bikelaneTrafRvsLeft), collapse = ","))
 
+  # cycleway:[side]:buffer tags - width of buffers to left or right of bike lane
+  ## empty vectors for the tags
+  bikelaneBuffFwdLeft <- c()
+  bikelaneBuffFwdRight <- c()
+  bikelaneBuffRvsLeft <- c()
+  if (df$is_oneway[1] == 1) {
+    # for one way, left and right values are forward left and right
+    # eg: 'cycleway:left:buffer:both' describes the buffer on both sides
+    # of the cycleway that is to the left of the road; in extracting tags, take 
+    # the final left/right/both (after 'buffer') and add it at the start of
+    # the tag, eg 'cycleway:left:buffer:both=0.5' becomes 'both:0.5'
+    if (any(keys == "cycleway:left:buffer:left")) {
+      tag <- paste0("left=", values[which(keys == "cycleway:left:buffer:left")])
+      bikelaneBuffFwdLeft <- c(bikelaneBuffFwdLeft, tag)
+    }
+    if (any(keys == "cycleway:left:buffer:right")) {
+      tag <- paste0("right=", values[which(keys == "cycleway:left:buffer:right")])
+      bikelaneBuffFwdLeft <- c(bikelaneBuffFwdLeft, tag)
+    }
+    if (any(keys == "cycleway:left:buffer:both")) {
+      tag <- paste0("both=", values[which(keys == "cycleway:left:buffer:both")])
+      bikelaneBuffFwdLeft <- c(bikelaneBuffFwdLeft, tag)
+    }
+    if (any(keys == "cycleway:right:buffer:left")) {
+      tag <- paste0("left=", values[which(keys == "cycleway:right:buffer:left")])
+      bikelaneBuffFwdRight <- c(bikelaneBuffFwdRight, tag)
+    }
+    if (any(keys == "cycleway:right:buffer:right")) {
+      tag <- paste0("right=", values[which(keys == "cycleway:right:buffer:right")])
+      bikelaneBuffFwdRight <- c(bikelaneBuffFwdRight, tag)
+    }
+    if (any(keys == "cycleway:right:buffer:both")) {
+      tag <- paste0("both=", values[which(keys == "cycleway:right:buffer:both")])
+      bikelaneBuffFwdRight <- c(bikelaneBuffFwdRight, tag)
+    }
+    if (any(keys == "cycleway:both:buffer:left")) {
+      tag <- paste0("left=", values[which(keys == "cycleway:both:buffer:left")])
+      bikelaneBuffFwdLeft <- c(bikelaneBuffFwdLeft, tag)
+      bikelaneBuffFwdRight <- c(bikelaneBuffFwdRight, tag)
+    }
+    if (any(keys == "cycleway:both:buffer:right")) {
+      tag <- paste0("right=", values[which(keys == "cycleway:both:buffer:right")])
+      bikelaneBuffFwdLeft <- c(bikelaneBuffFwdLeft, tag)
+      bikelaneBuffFwdRight <- c(bikelaneBuffFwdRight, tag)
+    }
+    if (any(keys == "cycleway:both:buffer:both")) {
+      tag <- paste0("both=", values[which(keys == "cycleway:both:buffer:both")])
+      bikelaneBuffFwdLeft <- c(bikelaneBuffFwdLeft, tag)
+      bikelaneBuffFwdRight <- c(bikelaneBuffFwdRight, tag)
+    }
+  } else {
+    # for two way, left values are forward left and right values are reverse left
+    if (any(keys == "cycleway:left:buffer:left")) {
+      tag <- paste0("left=", values[which(keys == "cycleway:left:buffer:left")])
+      bikelaneBuffFwdLeft <- c(bikelaneBuffFwdLeft, tag)
+    }
+    if (any(keys == "cycleway:left:buffer:right")) {
+      tag <- paste0("right=", values[which(keys == "cycleway:left:buffer:right")])
+      bikelaneBuffFwdLeft <- c(bikelaneBuffFwdLeft, tag)
+    }
+    if (any(keys == "cycleway:left:buffer:both")) {
+      tag <- paste0("both=", values[which(keys == "cycleway:left:buffer:both")])
+      bikelaneBuffFwdLeft <- c(bikelaneBuffFwdLeft, tag)
+    }
+    if (any(keys == "cycleway:right:buffer:left")) {
+      tag <- paste0("left=", values[which(keys == "cycleway:right:buffer:left")])
+      bikelaneBuffRvsLeft <- c(bikelaneBuffRvsLeft, tag)
+    }
+    if (any(keys == "cycleway:right:buffer:right")) {
+      tag <- paste0("right=", values[which(keys == "cycleway:right:buffer:right")])
+      bikelaneBuffRvsLeft <- c(bikelaneBuffRvsLeft, tag)
+    }
+    if (any(keys == "cycleway:right:buffer:both")) {
+      tag <- paste0("both=", values[which(keys == "cycleway:right:buffer:both")])
+      bikelaneBuffRvsLeft <- c(bikelaneBuffRvsLeft, tag)
+    }
+    if (any(keys == "cycleway:both:buffer:left")) {
+      tag <- paste0("left=", values[which(keys == "cycleway:both:buffer:left")])
+      bikelaneBuffFwdLeft <- c(bikelaneBuffFwdLeft, tag)
+      bikelaneBuffRvsLeft <- c(bikelaneBuffRvsLeft, tag)
+    }
+    if (any(keys == "cycleway:both:buffer:right")) {
+      tag <- paste0("right=", values[which(keys == "cycleway:both:buffer:right")])
+      bikelaneBuffFwdLeft <- c(bikelaneBuffFwdLeft, tag)
+      bikelaneBuffRvsLeft <- c(bikelaneBuffRvsLeft, tag)
+    }
+    if (any(keys == "cycleway:both:buffer:both")) {
+      tag <- paste0("both=", values[which(keys == "cycleway:both:buffer:both")])
+      bikelaneBuffFwdLeft <- c(bikelaneBuffFwdLeft, tag)
+      bikelaneBuffRvsLeft <- c(bikelaneBuffRvsLeft, tag)
+    }
+  }
+  ## add the buffer tags to the df
+  df$bikelaneBuffFwdLeft[1] <- 
+    ifelse(is.null(bikelaneBuffFwdLeft), NA, 
+           stringr::str_flatten(unique(bikelaneBuffFwdLeft), collapse = ","))
+  df$bikelaneBuffFwdRight[1] <- 
+    ifelse(is.null(bikelaneBuffFwdRight), NA, 
+           stringr::str_flatten(unique(bikelaneBuffFwdRight), collapse = ","))
+  df$bikelaneBuffRvsLeft[1] <- 
+    ifelse(is.null(bikelaneBuffRvsLeft), NA, 
+           stringr::str_flatten(unique(bikelaneBuffRvsLeft), collapse = ","))
+  
   return(df)
 }
 
