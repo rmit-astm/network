@@ -23,9 +23,26 @@ simplifyLinkAppearance <- function(edges_current, dTolerance = 20) {
   first_coords <- coords[first_indices, ]
   last_coords <- coords[last_indices, ]
   
+  # find the original start/endpoint geometry, based on from/to x/y, depending
+  # on direction of digitisation
+  edges_start_end <- edges_current %>%
+    # check whether startpoint of geometry matches from_id ("forward" if yes, "reverse" if no)
+    mutate(startpoint = st_coordinates(st_startpoint(geom))) %>%
+    rowwise() %>%
+    mutate(direction = 
+             ifelse(startpoint[[1]] == fromx & startpoint[[2]] == fromy, 
+                    "forward", 
+                    "reverse")) %>%
+    ungroup() %>%
+    # set start/end x/y based on digitisation direction
+    mutate(startx = ifelse(direction == "forward", fromx, tox),
+           starty = ifelse(direction == "forward", fromy, toy),
+           endx = ifelse(direction == "forward", tox, fromx),
+           endy = ifelse(direction == "forward", toy, fromy))
+ 
   # replace first and last coordinates with original start/endpoint geometry
-  first_coords[, c("X", "Y")] <- cbind(edges_current$fromx, edges_current$fromy)
-  last_coords[, c("X", "Y")] <- cbind(edges_current$tox, edges_current$toy)
+  first_coords[, c("X", "Y")] <- cbind(edges_start_end$startx, edges_start_end$starty)
+  last_coords[, c("X", "Y")] <- cbind(edges_start_end$endx, edges_start_end$endy)
   
   # combine modified first and last coordinates with the rest of the coordinates
   modified_coords <- coords
