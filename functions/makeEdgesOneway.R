@@ -120,6 +120,20 @@ updateBikelaneEdges <- function(edges_current,
       required_fields <- c(required_fields, "bikelane_right")
     }
   }
+  if ("bikelaneTypeFwdLeft" %in% colnames(edges_current)) {
+    edges_current <- edges_current %>%
+      rename(bikelane_left_lane = bikelaneTypeFwdLeft)
+    if (!"bikelane_left_lane" %in% required_fields) {
+      required_fields <- c(required_fields, "bikelane_left_lane")
+    }
+  }
+  if ("bikelaneTypeFwdRight" %in% colnames(edges_current)) {
+    edges_current <- edges_current %>%
+      rename(bikelane_right_lane = bikelaneTypeFwdRight)
+    if (!"bikelane_right_lane" %in% required_fields) {
+      required_fields <- c(required_fields, "bikelane_right_lane")
+    }
+  }
   if ("bikelaneWidthFwdLeft" %in% colnames(edges_current)) {
     edges_current <- edges_current %>%
       rename(bikelane_left_width = bikelaneWidthFwdLeft)
@@ -171,6 +185,13 @@ updateBikelaneEdges <- function(edges_current,
       required_fields <- c(required_fields, "bikelane_left")
     }
   }
+  if ("bikelaneTypeRvsLeft" %in% colnames(edges_twoway_reversed)) {
+    edges_twoway_reversed <- edges_twoway_reversed %>%
+      mutate(bikelane_left_lane = bikelaneTypeRvsLeft)
+    if (!"bikelane_left_lane" %in% required_fields) {
+      required_fields <- c(required_fields, "bikelane_left_lane")
+    }
+  }
   if ("bikelaneWidthRvsLeft" %in% colnames(edges_twoway_reversed)) {
     edges_twoway_reversed <- edges_twoway_reversed %>%
       mutate(bikelane_left_width = bikelaneWidthRvsLeft)
@@ -219,6 +240,26 @@ processBikelaneColumns <- function(edges_current) {
     column <- bikelaneinfra_columns[i]
     if (column %in% names(edges_current)) {
       edges_current[[column]] <- bikelaneinfra_clean(edges_current[[column]])
+    }
+  }
+  
+  # clean lane type columns to correct some errors
+  bikelanetype_columns <- c("bikelane_left_lane", "bikelane_right_lane")
+  
+  bikelanetype_clean <- function(x) {
+    # correct 'exlusive' spelling
+    x <- gsub("exlusive", "exclusive", x)
+    # correct 'paking' spelling
+    x <- gsub("paking", "parking", x)
+    # remove other tags combined with 'share_parking' (eg 'share_parking,exclusive')
+    x <- gsub(".*share_parking.*", "share_parking", x)
+    return(x)
+  }
+  
+  for (i in 1:length(bikelanetype_columns)) {
+    column <- bikelanetype_columns[i]
+    if (column %in% names(edges_current)) {
+      edges_current[[column]] <- bikelanetype_clean(edges_current[[column]])
     }
   }
   

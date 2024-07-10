@@ -159,6 +159,53 @@ getBikelaneProjectTags <- function(df, keys, values) {
     ifelse(is.null(bikelaneRvsLeft), NA, 
            stringr::str_flatten(unique(bikelaneRvsLeft), collapse = ","))
   
+  # cycleway:[side]:lane tags - type of bike lane (eg 'share_parking')
+  ## empty vectors for the tags
+  bikelaneTypeFwdLeft <- c()
+  bikelaneTypeFwdRight <- c()
+  bikelaneTypeRvsLeft <- c()
+  if (df$is_oneway[1] == 1) {
+    # for one way, left and right values are forward left and right
+    if (any(keys == "cycleway:left:lane")) {
+      tag <- values[which(keys == "cycleway:left:lane")]
+      bikelaneTypeFwdLeft <- c(bikelaneTypeFwdLeft, tag)
+    }
+    if (any(keys == "cycleway:right:lane")) {
+      tag <- values[which(keys == "cycleway:right:lane")]
+      bikelaneTypeFwdRight <- c(bikelaneTypeFwdRight, tag)
+    }
+    if (any(keys == "cycleway:both:lane")) {
+      tag <- values[which(keys == "cycleway:both:lane")]
+      bikelaneTypeFwdLeft <- c(bikelaneTypeFwdLeft, tag)
+      bikelaneTypeFwdRight <- c(bikelaneTypeFwdRight, tag)
+    }
+  } else {
+    # for two way, left values are forward left and right values are reverse left
+    if (any(keys == "cycleway:left:lane")) {
+      tag <- values[which(keys == "cycleway:left:lane")]
+      bikelaneTypeFwdLeft <- c(bikelaneTypeFwdLeft, tag)
+    }
+    if (any(keys == "cycleway:right:lane")) {
+      tag <- values[which(keys == "cycleway:right:lane")]
+      bikelaneTypeRvsLeft <- c(bikelaneTypeRvsLeft, tag)
+    }
+    if (any(keys == "cycleway:both:lane")) {
+      tag <- values[which(keys == "cycleway:both:lane")]
+      bikelaneTypeFwdLeft <- c(bikelaneTypeFwdLeft, tag)
+      bikelaneTypeRvsLeft <- c(bikelaneTypeRvsLeft, tag)
+    }
+  }
+  ## add the lane type tags to the df
+  df$bikelaneTypeFwdLeft[1] <- 
+    ifelse(is.null(bikelaneTypeFwdLeft), NA, 
+           stringr::str_flatten(unique(bikelaneTypeFwdLeft), collapse = ","))
+  df$bikelaneTypeFwdRight[1] <- 
+    ifelse(is.null(bikelaneTypeFwdRight), NA, 
+           stringr::str_flatten(unique(bikelaneTypeFwdRight), collapse = ","))
+  df$bikelaneTypeRvsLeft[1] <- 
+    ifelse(is.null(bikelaneTypeRvsLeft), NA, 
+           stringr::str_flatten(unique(bikelaneTypeRvsLeft), collapse = ","))
+
   # cycleway:[side]:width tags - width of bike lane
   ## empty vectors for the tags
   bikelaneWidthFwdLeft <- c()
