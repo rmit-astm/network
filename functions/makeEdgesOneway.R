@@ -271,36 +271,38 @@ processBikelaneColumns <- function(edges_current) {
   for (i in 1:length(cols_to_split)) {
     column <- cols_to_split[i]
     
-    # new column names
-    left_col <- paste0(column, "_left")
-    right_col <- paste0(column, "_right")
-    
-    edges_current <- edges_current %>%
+    if (column  %in% names(edges_current)) {
+      # new column names
+      left_col <- paste0(column, "_left")
+      right_col <- paste0(column, "_right")
       
-      # populate the new left and right columns
-      mutate(!!left_col := case_when(
-        # values for 'both' or 'left' tags
-        stringr::str_detect(!!sym(column), "both") ~ str_extract(!!sym(column), "(?<=both=)[^,]*"),  # from 'both=' up to following comma or end
-        stringr::str_detect(!!sym(column), "left") ~ str_extract(!!sym(column), "(?<=left=)[^,]*"),  # from 'left=' up to following comma or end
-        TRUE ~ NA
-      ),
-      !!right_col := case_when(
-        # values for 'both' or 'right' tags
-        stringr::str_detect(!!sym(column), "both") ~ str_extract(!!sym(column), "(?<=both=)[^,]*"),  # from 'both=' up to following comma or end
-        stringr::str_detect(!!sym(column), "right") ~ str_extract(!!sym(column), "(?<=right=)[^,]*"),  # from 'right=' up to following comma or end
-        TRUE ~ NA
-      )) %>%
-      
-      # remove the former column
-      dplyr::select(-!!sym(column))
-    
-    # convert buffer columns to numeric
-    if (column %in% bikelanebuffer_columns) {
       edges_current <- edges_current %>%
-        mutate(!!left_col := as.numeric(!!sym(left_col)),
-               !!right_col := as.numeric(!!sym(right_col)))
+        
+        # populate the new left and right columns
+        mutate(!!left_col := case_when(
+          # values for 'both' or 'left' tags
+          stringr::str_detect(!!sym(column), "both") ~ str_extract(!!sym(column), "(?<=both=)[^,]*"),  # from 'both=' up to following comma or end
+          stringr::str_detect(!!sym(column), "left") ~ str_extract(!!sym(column), "(?<=left=)[^,]*"),  # from 'left=' up to following comma or end
+          TRUE ~ NA
+        ),
+        !!right_col := case_when(
+          # values for 'both' or 'right' tags
+          stringr::str_detect(!!sym(column), "both") ~ str_extract(!!sym(column), "(?<=both=)[^,]*"),  # from 'both=' up to following comma or end
+          stringr::str_detect(!!sym(column), "right") ~ str_extract(!!sym(column), "(?<=right=)[^,]*"),  # from 'right=' up to following comma or end
+          TRUE ~ NA
+        )) %>%
+        
+        # remove the former column
+        dplyr::select(-!!sym(column))
+      
+      # convert buffer columns to numeric
+      if (column %in% bikelanebuffer_columns) {
+        edges_current <- edges_current %>%
+          mutate(!!left_col := as.numeric(!!sym(left_col)),
+                 !!right_col := as.numeric(!!sym(right_col)))
+      }
     }
   }
-
+  
   return(edges_current)
 }
