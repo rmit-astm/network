@@ -36,7 +36,8 @@ simplifyLinkAppearance <- function(edges_current, dTolerance = 20) {
               by = "link_id")
     
   # correct coordinates at start and end of links to exactly match node coordinates
-  simplified_edges <- correct_coords(simplified_edges)
+  simplified_edges <- correct_coords(simplified_edges) %>%
+    dplyr::select(-startx, -starty, -endx, -endy)
 
   return(simplified_edges)
 }
