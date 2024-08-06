@@ -21,9 +21,11 @@ processOsmTags <- function(osm_df, this_defaults_df, simplifyEdges){
   tagList <-strsplit(gsub('"', '', gsub('"=>"', ',,', gsub('","', '",,"', osmWithDefaults$other_tags))), ',,')
   
   osmWithDefaults <- osmWithDefaults %>%
-    mutate(cycleway=ifelse(highway=="cycleway",4,0)) %>%
-    dplyr::select(osm_id,highway,highway_order,freespeed,permlanes,laneCapacity,is_oneway,cycleway,is_cycle,is_walk,is_car)
-
+    mutate(cycleway=ifelse(highway=="cycleway",4,0),
+           contrabike=0) %>%  # tag for contraflow bike lanes, default is 0
+    dplyr::select(osm_id,highway,highway_order,freespeed,permlanes,laneCapacity,
+                  is_oneway,cycleway,is_cycle,is_walk,is_car,contrabike)
+  
   getMetadataInfo <- function(i) {
     df <- osmWithDefaults[i,]
     tags=tagList[[i]]
@@ -87,6 +89,21 @@ processOsmTags <- function(osm_df, this_defaults_df, simplifyEdges){
         df$permlanes[1] = newLanes
       }
       
+      # contra-flow bike lanes (oneway, with 'no' or '-1' tag indicating bikes 
+      # can ride in other direction)
+      keys_to_check <- c("oneway:bicycle", "cycleway:left:oneway", 
+                         "cycleway:right:oneway", "cycleway:both:oneway")
+      if (df$is_oneway[1] == 1) {
+        for (key in keys_to_check) {
+          if (any(keys == key)) {
+            if (values[which(keys == key)] %in% c("no", "-1")) {
+              df$contrabike[1] = 1
+              break # exit the loop as soon as a match is found
+            }
+          }
+        }
+      }
+
       # add Melbourne Bikelane Project tags, if not simplifying edges
       if (!simplifyEdges) df <- getBikelaneProjectTags(df, keys, values)
       
