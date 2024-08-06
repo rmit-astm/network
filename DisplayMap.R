@@ -43,11 +43,20 @@ makeDisplayLayers <- function() {
     dplyr::select(shared_path = bend_everyday_type)
   
   bikelane_project_tags <- links %>%
-    filter(!is.na(bikelaneleft) | !is.na(bikelaneright) |
-             !is.na(bikelaneleftwidth) | !is.na(bikelanerightwidth) |
-             !is.na(bikelanelefttraf) | !is.na(bikelanerighttraf)) %>%
-    dplyr::select(bikelaneleft, bikelaneright, bikelaneleftwidth,
-                  bikelanerightwidth, bikelanelefttraf, bikelanerighttraf)
+    filter(!is.na(bikelane_left) | !is.na(bikelane_right) |
+             !is.na(bikelane_left_lane) | !is.na(bikelane_right_lane) |
+             !is.na(bikelane_left_width) | !is.na(bikelane_right_width) |
+             !is.na(bikelane_left_traf_left) | !is.na(bikelane_left_traf_right) |
+             !is.na(bikelane_right_traf_left) | !is.na(bikelane_right_traf_right) |
+             !is.na(bikelane_left_buff_left) | !is.na(bikelane_left_buff_right) |
+             !is.na(bikelane_right_buff_left) | !is.na(bikelane_right_buff_right)) %>%
+    dplyr::select(bikelane_left, bikelane_right, 
+                  bikelane_left_lane, bikelane_right_lane,
+                  bikelane_left_width, bikelane_right_width, 
+                  bikelane_left_traf_left, bikelane_left_traf_right,
+                  bikelane_right_traf_left, bikelane_right_traf_right, 
+                  bikelane_left_buff_left, bikelane_left_buff_right,
+                  bikelane_right_buff_left, bikelane_right_buff_right)
   
   speed_limit <- links %>%
     filter(!(highway %in% c("bus", "train"))) %>%
