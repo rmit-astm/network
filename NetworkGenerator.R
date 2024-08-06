@@ -251,6 +251,15 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
     inner_join(osmAttributes, by="osm_id") %>%
     dplyr::select(-highway, highway_order)
   
+  # exclude contraflow bikelanes in 'surroundingRegion' if it is different from 
+  # 'region', and if edges are being simplified (because the surroundingRegion
+  # contains main roads only, and simplification can extend contraflow lanes for 
+  # very long distances along them)
+  if (simplifyEdges & surroundingRegion != region) {
+    edgesAttributed <- confineContrabikeToRegion(edgesAttributed, region,
+                                                 regionBufferDist, outputCrs)
+  }
+
   # keep only the largest connected component
   largestComponent <- largestConnectedComponent(networkUnconfigured[[1]], edgesAttributed)
 
