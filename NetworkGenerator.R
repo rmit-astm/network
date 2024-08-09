@@ -48,6 +48,7 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
     bendigoParkingLine = "/CoGB_Parking_Lines_GDA2020Z55_20240222.shp"
     bendigoBikeRacks = "./data/Bike Racks_v1.2.csv"
     bendigoEverydayRoutes = "./data/cogb-cycling-everyday-rides.shz"
+    bendigoExistingProtected = "./data/cogb_existing_protected_network.sqlite"
     bendigoProposedProtected = "./data/cogb_proposed_protected_network.sqlite"
 
   } else if (city == "Melbourne") {
