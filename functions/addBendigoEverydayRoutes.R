@@ -3,11 +3,13 @@
 addBendigoEverydayRoutes <- function(network.nodes,
                                      network.links,
                                      everyday.route.location,
+                                     existing.protected.location,
                                      outputCrs) {
   
   # network.nodes = networkOneway[[1]]
   # network.links = networkOneway[[2]]
   # everyday.route.location = bendigoEverydayRoutes
+  # existing.protected.location = bendigoExistingProtected
   
   # reporting 
   # -----------------------------------#
@@ -113,6 +115,12 @@ addBendigoEverydayRoutes <- function(network.nodes,
   # set up groups
   route.segment.types <- route.segments$Ride_Type %>% unique()
   
+  # if separate digitised version of "Shared Path / Protected Cycleway" exists, 
+  # then use that instead of the one contained in bendigoEverydayRoutes
+  if (file.exists(existing.protected.location)) {
+    route.segment.types <- route.segment.types[!route.segment.types == "Shared Path / Protected Cycleway"]
+  }
+  
   # for each group, combine contiguous sections, then split at intersections, and convert to useful linestrings
   # https://stackoverflow.com/questions/69175360/is-there-a-way-to-merge-contiguous-multilinestrings-sf-object-in-r
   split.routes <- c()
@@ -214,6 +222,14 @@ addBendigoEverydayRoutes <- function(network.nodes,
     split.routes <- bind_rows(split.routes, group.resplit)
   }
   
+  # if separate digitised version of "Shared Path / Protected Cycleway", if present
+  if (file.exists(existing.protected.location)) {
+    existing.protected.group <- st_read(existing.protected.location) %>%
+      mutate(Ride_Type = "Shared Path / Protected Cycleway",
+             ride_type_rank = 5) %>%
+      st_set_geometry("geometry")
+    split.routes <- bind_rows(split.routes, existing.protected.group)
+  }
   
   # set up graph
   # -----------------------------------#
@@ -368,7 +384,7 @@ addBendigoEverydayRoutes <- function(network.nodes,
   # # check whether any links with an everyday_type are is_cycle=0
   # chk <- links.with.everyday %>%
   #   filter(!is.na(bend_everyday_type)) %>%
-  #   filter(is_cycle == 0)  # there are 37 of these
+  #   filter(is_cycle == 0)  # there are 37 of these (or 162 in a later version )
   
   # alter is_cycle and mode to match those that are everyday links
   for (i in 1:nrow(links.with.everyday)) {

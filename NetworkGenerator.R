@@ -427,6 +427,7 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
       networkOneway[[2]] <- addBendigoEverydayRoutes(networkOneway[[1]],
                                                      networkOneway[[2]],
                                                      bendigoEverydayRoutes,
+                                                     bendigoExistingProtected,
                                                      outputCrs)
       networkOneway[[2]] <- 
         addBendigoProposedProtected(networkOneway[[1]],
