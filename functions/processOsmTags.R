@@ -479,3 +479,29 @@ getBikelaneProjectTags <- function(df, keys, values) {
   return(df)
 }
 
+# function to confine contrabike to region, where surrounding region is different
+# and edges are being simplified
+confineContrabikeToRegion <- function(edgesAttributed, region,
+                                      regionBufferDist, outputCrs) {
+  message("As 'simplifyEdges is True, and the 'surroundingRegion' is different from the 'region', contraflow bike lanes outside the 'region' will not be captured (as the simplification process could result in incorrectly long lanes on the main roads in the 'surroundingRegion').")
+  
+  # read in and region and buffer by selected distance (eg 10km)
+  region.poly <- st_read(region)
+  if (st_crs(region.poly)$epsg != outputCrs) {
+    region.poly <- st_transform(region.poly, outputCrs)
+  }
+  region.buffer <- st_buffer(region.poly, regionBufferDist) %>%
+    st_snap_to_grid(1)
+  
+  # set contrabike 0 where not in region
+  regionEdges <- edgesAttributed %>%
+    st_filter(region.buffer, .predicate = st_intersects) %>%
+    mutate(from_to = paste0(from_id, "_", to_id)) %>%
+    .$from_to
+  edgesAttributedUpdated <- edgesAttributed %>%
+    mutate(from_to = paste0(from_id, "_", to_id)) %>%
+    mutate(contrabike = ifelse(from_to %in% regionEdges, contrabike, 0)) %>%
+    dplyr::select(-from_to)
+  
+  return(edgesAttributedUpdated)
+}
