@@ -95,3 +95,37 @@ getRegionDem(dem.location = "./data/vmelev_dem10m_ESRI_grid_GDA94_VicGrid/vmelev
              region.location = "./data/greater_melbourne.sqlite", regionBufferDist = 10000,
              output.filename = "dem_melbourne", outputCrs = "EPSG:7899")
 
+
+# 3 School speed zones ----
+# -----------------------------------------------------------------------------#
+# function for extracting the school zones from DTP speed zone file
+# note the speed zone file is large and slow to load
+
+getSchoolZones <- function(speed.zone.location, outputCrs) {
+  
+  # read in the speed zones
+  speed.zones <- st_read(speed.zone.location)
+  
+  # unlist the 'zone_conditions' field - needs more processing than just 'unlist'
+  # because of exceptions in the contents, eg character(0) or c("c("Normal Operation", "Shop"))
+  zone_conditions <- data.frame(zone_conditions = I(speed.zones$zone_conditions)) %>%
+    .$zone_conditions %>%
+    as.vector() %>%
+    as.character()
+  
+  # join zone conditions, and filter to school zones
+  school.zones <- speed.zones %>%
+    dplyr::select(speed_limit, road_name, direction) %>%
+    cbind(zone_conditions) %>%
+    filter(zone_conditions == "School") %>%
+    st_transform(outputCrs)
+
+  return(school.zones)
+  
+}
+
+school.zones <- getSchoolZones(speed.zone.location = "./data/Speed_Zones_March_2024.geojson",
+                               outputCrs = 7899)
+
+st_write(school.zones, "./data/school_zones_March_2024.sqlite")
+

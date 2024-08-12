@@ -27,6 +27,8 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   # •	ndviFile: if 'addNDVI=T', raster file with NDVI values
   # • treeCanopyCoverFile: if 'addTreeCanopyCover=T=T', raster file with tree
   #   canopy coverage values
+  # • schoolZoneFile: if 'addSchoolZones=T', sqlite file containing roads with
+  #   school time speed limit zones
   # •	gtfs_feed: if 'addGtfs=T' or 'addDestinationLayer=T, zip file containing 
   #   GTFS data (and, if 'addGtfs=T', also set analysis date in GTFS section)
 
@@ -40,6 +42,7 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
     demFile = "./data/dem_bendigo.tif" 
     ndviFile = "./data/NDVI_Bendigo_2023.tif" 
     treeCanopyCoverFile = "./data/TCC_Bendigo_5m.tif" 
+    schoolZoneFile = "./data/school_zones_March_2024.sqlite"
     gtfs_feed = "./data/gtfs.zip"
     # city-specific data
     addBendigoData = T
@@ -61,6 +64,7 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
     demFile = "./data/dem_melbourne.tif"
     ndviFile = "./data/NDVI_Melbourne_2023.tif"
     treeCanopyCoverFile = "./data/TCC_Melbourne_5m.tif"  
+    schoolZoneFile = "./data/school_zones_March_2024.sqlite"
     gtfs_feed = "./data/gtfs.zip"
 
   } else {
@@ -122,6 +126,10 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   # A flag for whether to add tree canopy cover or not
   addTreeCanopyCover=T
   
+  # SCHOOL ZONES
+  # A flag for whether to add school time speed limit zones or not
+  addSchoolZones=T
+  
   # GTFS
   # A flag for whether to add a network based on GTFS or not
   addGtfs=T
@@ -180,6 +188,7 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   echo(paste0("- Adding destination layer:                       ", addDestinationLayer,"\n"))
   echo(paste0("- Adding NDVI:                                    ", addNDVI,"\n"))
   echo(paste0("- Adding Tree Canopy Cover Percentage:            ", addTreeCanopyCover,"\n"))
+  echo(paste0("- Adding school speed tme speed limit zones:      ", addSchoolZones, "\n"))
   echo(paste0("- Adding PT from GTFS:                            ", addGtfs,"\n"))
   echo(paste0("- Writing outputs in SQLite format:               ", writeSqlite,"\n"))
   echo(paste0("- Writing outputs in ShapeFile format:            ", writeShp,"\n"))
@@ -420,6 +429,13 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
                                          outputCrs,
                                          onroadBus,
                                          city)) 
+  }
+  
+  # Adding school time speed zones to links
+  if (addSchoolZones) {
+    networkOneway[[2]] <- addSchoolSpeedZones(networkOneway[[2]],
+                                              schoolZoneFile,
+                                              outputCrs)
   }
   
   # Adding Bendigo 'everyday routes' and 'proposed protected routes' as link attributes
