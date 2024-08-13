@@ -363,6 +363,7 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
                                                     bendigoParkingPoly,
                                                     bendigoParkingLine,
                                                     bendigoBikeRacks,
+                                                    osmGpkg,
                                                     outputCrs)
       } else {
         localDestinations <- NULL
@@ -380,6 +381,12 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
                                     region,
                                     regionBufferDist,
                                     localDestinations)
+    
+    if (city == "Bendigo") {
+      if (addBendigoData) {
+        destinations <- addPremiumParkTagBendigo(destinations)
+      } 
+    }
   }
 
   # add node details to links
