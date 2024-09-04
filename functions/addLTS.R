@@ -1,17 +1,28 @@
-# function to add level of traffic stress to network, based on highway class, 
-# traffic (ADT) and speed, and related impedance
+# function to add level of traffic stress to network, based on cycleway type,
+# highway class, traffic (ADT) and speed, and related impedance
 
 # traffic volumes (eg ADT 10000) are for two-way traffic, so are halved
 # (eg 10000 / 2) in order to apply to the one-way links in edges_current
 
-
-
-addLTS <- function(nodes_current, edges_current) {
+addLTS <- function(nodes_current, edges_current,
+                   excludeInadequateLanes = F) {
  
   # testing
   # nodes_current <- networkTraffic[[1]]
   # edges_current <- networkTraffic[[2]]
+  # excludeInadequateLanes = T
   
+  # optional step to convert on-road lanes to mixed traffic if they are not 
+  # wide enough, or if parking is allowed on them (requires use of specific
+  # tags dealing with cycle lane width, traffic and parking conditions)
+  if (excludeInadequateLanes) {
+    inadequate.lane.links <- getInadequateLaneLinks(edges_current)
+    edges_current <- edges_current %>%
+      mutate(cycleway_orig = cycleway,
+             cycleway = ifelse(link_id %in% inadequate.lane.links,
+                               "inadequate_lane", cycleway))
+  }
+
   # assign LTS to edges 
   # '1' to '4' are categories of increasing stress, as per table below]
   
@@ -21,7 +32,9 @@ addLTS <- function(nodes_current, edges_current) {
   secondary <- c("secondary", "secondary_link")
   primary <- c("primary", "primary_link")
   
-
+  
+  # Calculate edge LTS based on cycleway type, highway classification (highway), 
+  # speed (freespeed) and traffic (ADT)
   edges_current <- edges_current %>%
     # make speed field (rounded, to avoid floating point issues)
     mutate(speed = round(freespeed * 3.6)) %>%
@@ -81,8 +94,9 @@ addLTS <- function(nodes_current, edges_current) {
   #   st_drop_geometry() %>%
   #   group_by(highway, lvl_traf_stress) %>%
   #   summarise(n = n())
+  
 
-  # assign LTS to nodes, based on highest 
+  # Assign LTS to nodes, based on highest 
   # begin with all nodes (from and to) and the LTS level of the associated link
   node_max_lookup <- rbind(edges_current %>%
                              st_drop_geometry() %>%
@@ -94,6 +108,7 @@ addLTS <- function(nodes_current, edges_current) {
     # find highest level of LTS for links connecting with the node
     summarise(max_LTS = max(LTS)) %>%
     ungroup()
+  
   
   # Calculate impedance  for intersection, and total impedance
   
@@ -147,16 +162,29 @@ addLTS <- function(nodes_current, edges_current) {
     # remove unwanted fields
     dplyr::select(-speed, -type, -max_LTS, -buffer.a, -buffer.b, 
                   -imped.a, -imped.b, -intersec_imped)
-
+  
+  # restore original cycleway tags if they had been altered by 'excludeInadequateLanes'
+  if (excludeInadequateLanes) {
+    edges_current <- edges_current %>%
+      mutate(cycleway_orig = cycleway_orig) %>%
+  dplyr::select(-cycleway_orig)
+  }
+  
   return(list(nodes_current, edges_current))
 }
 
 
-# simplified version of 'addImpedances' which only adds LTS, based on assumed traffic
-addLTSAssumedTraffic <- function(input.network) {
+# alternative function which invokes 'addAssumedTraffic' to include assumed
+# traffic volumes where simulated volumes aren't available, and then applies
+# 'addLTS'
+
+addLTSAssumedTraffic <- function(input.network,
+                                 excludeInadequateLanes = F) {
   
   # input.network <- networkOneway
   
+  cat(paste0(as.character(Sys.time()), ' | ', 
+             "Adding level of traffic stress, based on assumed traffic volumes\n"))  
   echo("Adding level of traffic stress, based on assumed traffic volumes\n")
   
   input.nodes <- input.network[[1]]
@@ -166,10 +194,121 @@ addLTSAssumedTraffic <- function(input.network) {
                                                         input.links)
   
   network.with.LTS <- addLTS(input.links.with.assumed.traffic[[1]],
-                             input.links.with.assumed.traffic[[2]])
+                             input.links.with.assumed.traffic[[2]],
+                             excludeInadequateLanes)
   
   return(list(network.with.LTS[[1]],
               network.with.LTS[[2]]))
   
 }
 
+# function to exclude on-road cycle lanes that don't meet width and parking
+# separation criteria (so they will be treated as mixed traffic instead)
+
+getInadequateLaneLinks <- function(edges_current) {
+  
+  # edges_current <- networkOneway[[2]]
+  
+  # test for adequacy for bikelane width and parking separation, for simple lanes
+  ## summary of inadequate lanes:
+  ## - if bikelane width + buffer from traffic + buffer from parking less than:
+  ##   - 1.2m if no adjacent parking
+  ##   - 1.8m if adjacent parking
+  ## - if parking allowed on lane
+
+  
+  requiredtags <- c("bikelane_left_width", "bikelane_right_width",
+                    "bikelane_left_buff_left", "bikelane_left_buff_right", 
+                    "bikelane_left_traf_left", "bikelane_left_traf_right",
+                    "bikelane_right_buff_left", "bikelane_right_buff_right",
+                    "bikelane_right_traf_left", "bikelane_right_traf_right",
+                    "bikelane_left_lane", "bikelane_right_lane")
+ 
+  if (all(requiredtags %in% colnames(edges_current))) {
+    
+    # calculate adequacy
+    inadequate.lane.links <- edges_current %>%
+      
+      # extract cycle lanes and their required tags
+      st_drop_geometry() %>%
+      filter(cycleway == "simple_lane") %>%
+      dplyr::select(link_id, cycleway, all_of(requiredtags)) %>%
+      
+      # part 1 - adequacy of lane width plus any buffers
+      
+      # calculate total widths of lanes plus buffer (note that NAs become zero)
+      mutate(width_left = rowSums(pick(bikelane_left_width, bikelane_left_buff_left,
+                                       bikelane_left_buff_right), na.rm = T),
+             width_right = rowSums(pick(bikelane_right_width, bikelane_right_buff_left,
+                                        bikelane_right_buff_right), na.rm = T)) %>%
+      
+      # calculate required widths (1.8 if adjacent parking, otherwise 1.2)
+      mutate(required_width_left = if_else(
+        coalesce(bikelane_left_traf_left == "parking", FALSE) |
+          coalesce(bikelane_left_traf_right == "parking", FALSE),
+        1.8, 1.2),
+        required_width_right = if_else(
+          coalesce(bikelane_right_traf_left == "parking", FALSE) |
+            coalesce(bikelane_right_traf_right == "parking", FALSE),
+          1.8, 1.2)) %>%
+      
+      # determine whether lane is present and adequate (noting that 0 width is unspecified)
+      mutate(adequate_width_left = case_when(
+        width_left >= required_width_left ~ "adequate",
+        width_left > 0 & width_left < required_width_left ~ "inadequate",
+        .default = "unspecified"
+      ), adequate_width_right = case_when(
+        width_right >= required_width_right ~ "adequate",
+        width_right > 0 & width_right < required_width_right ~ "inadequate",
+        .default = "unspecified"
+      )) %>%
+      
+      # determine adequacy of width - determined by left lane (that is, we assume
+      # most lanes are on the left), unless left is inadequate and right is 
+      # present and adequate - use 0 for inadequate, 1 for adequate
+      # or undetermined
+      mutate(adequate_width = ifelse(adequate_width_left == "inadequate" & 
+                                       !adequate_width_right == "adequate",
+                                     0, 1)) %>%
+      
+      # part 2 - parking allowed
+      
+      # determine whether there is shared paraking on left and right lanes - 
+      # inadequate if 'share_parking'' adequate if some other entry (most are
+      # 'exclusive', thought here are others; unspecified if NA)
+      mutate(
+        adequate_shareparking_left = case_when(
+          is.na(bikelane_left_lane) ~ "unspecified",
+          bikelane_left_lane == "share_parking" ~ "inadequate",
+          .default = "adequate",
+        ),
+        adequate_shareparking_right = case_when(
+          is.na(bikelane_right_lane) ~ "unspecified",
+          bikelane_right_lane == "share_parking" ~ "inadequate",
+          .default = "adequate")) %>%
+    
+      # determine adequacy of shared parking position - determined by left lane
+      # (that is, we assume most lanes are on the left), unless left is inadequate
+      # and right is present and adequate - use 0 for inadequate, 1 for
+      # adequate or undetermined
+      mutate(adequate_shareparking = ifelse(adequate_shareparking_left == "inadequate" &
+                                              !adequate_shareparking_right == "adequate",
+                                            0, 1)) %>%
+      
+      # determine overall adequacy - fails if either width or shareparking is 
+      # inadequate - use 1 for inadequate and 0 for adequate
+      mutate(inadequate_lane = ifelse(adequate_width == 0 | adequate_shareparking == 0,
+                                      1, 0)) %>%
+      
+      # keep the link_ids of the inadequate lanes
+      filter(inadequate_lane == 1) %>%
+      .$link_id
+    
+    return(inadequate.lane.links)
+
+  } else {
+    message("Tags needed to calculate adequacy of bikeline width and parking separation are not present; skipping.")
+    return(c())
+  }
+  
+}
