@@ -202,6 +202,30 @@ addLTSAssumedTraffic <- function(input.network,
   
 }
 
+# function to add assumed traffic, where actual/simulated figures
+# aren't available, being the lowest volume for each category where used in 'addLTS'
+addAssumedTraffic <- function(network.nodes, network.links) {
+  
+  # road groups
+  local <- c("residential", "road", "unclassified", "living_street", "service")
+  tertiary <- c("tertiary", "tertiary_link")
+  secondary <- c("secondary", "secondary_link")
+  
+  # add assumed traffic - figures from 'addLTS.R' grid, divided by 2 because the grid
+  # uses 2-way traffic and these are figures applied to 1-way links
+  links.with.traffic <- network.links %>%
+    mutate(ADT = case_when(
+      highway %in% local     ~ 750 / 2,
+      highway %in% tertiary  ~ 3000 / 2,
+      highway %in% secondary ~ 10000 / 2,
+      TRUE                   ~ NA
+    ))
+  
+  return(list(network.nodes, links.with.traffic))
+}
+
+
+
 # function to exclude on-road cycle lanes that don't meet width and parking
 # separation criteria (so they will be treated as mixed traffic instead)
 

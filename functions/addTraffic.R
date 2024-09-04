@@ -46,26 +46,59 @@ addTraffic <- function(network.nodes, network.links, traffic.links, multiplier =
 }
 
 
-# alternative function to add assumed traffic, where actual/simulated figures
-# aren't available, being the lowest volume for each category where used in 'addLTS.R'
-addAssumedTraffic <- function(network.nodes, network.links) {
+# alternative function which can be used where the traffic.links file
+# contains the same link_id's as the network.links file
+
+addTraffic2 <- function(network.nodes, network.links, traffic.links, multiplier = 1) {
   
-  # road groups
-  local <- c("residential", "road", "unclassified", "living_street", "service")
-  tertiary <- c("tertiary", "tertiary_link")
-  secondary <- c("secondary", "secondary_link")
+  # testing
+  # network.nodes = st_read("./output/test/melbourne_network.sqlite", layer = "nodes)
+  # network.links = st_read("./output/test/melbourne_network.sqlite", layer = "links")
+  # traffic.links = st_read("./output/test/links_with_traffic.sqlite", layer = "cars_aht")
+  # multiplier = 10
   
-  # add assumed traffic - figures from 'addLTS.R' grid, divided by 2 because the grid
-  # uses 2-way traffic and these are figures applied to 1-way links
+  # select traffic fields from traffic.links
+  traffic <- traffic.links %>%
+    dplyr::select(link_id, total_vol) %>%
+    st_drop_geometry()
+  
+  # join traffic to links
   links.with.traffic <- network.links %>%
-    mutate(ADT = case_when(
-      highway %in% local     ~ 750 / 2,
-      highway %in% tertiary  ~ 3000 / 2,
-      highway %in% secondary ~ 10000 / 2,
-      TRUE                   ~ NA
-    ))
+    left_join(traffic, by = "link_id") %>%
+    # convert NAs to zeros, and apply multiplier
+    mutate(total_vol = if_else(is.na(total_vol), 0, total_vol)) %>%
+    mutate(total_vol = total_vol * multiplier) %>%
+    rename(ADT = total_vol) %>%
+    
+    # remove duplicates, if any, which have arisen because of original duplicate links,
+    # summing their ATDs: group, sum the ATDs, then remove the duplicate with 'distinct'
+    group_by(link_id) %>%
+    mutate(ADT = sum(ADT)) %>%
+    distinct() %>%
+    ungroup()
   
+  # return network with traffic volumes added
   return(list(network.nodes, links.with.traffic))
+  
 }
 
 
+# alternative function which can be used where the traffic.links file is
+# the same as the network.links file apart from the addition of a 
+# traffic column, and so simply needs to be substituted
+
+add.traffic3 <- function(network.nodes, traffic.links, multiplier = 1) {
+  
+  # testing
+  # network.nodes = st_read("./output/test/melbourne_network.sqlite", layer = "nodes)
+  # traffic.links = st_read("./output/test/links_with_traffic.sqlite", layer = "cars_aht")
+  # multiplier = 10
+  
+  # calculate traffic for traffic links
+  network.links.traffic <- traffic.links %>%
+    mutate(ADT = total_vol * multiplier)
+  
+  # return network with traffic volumes added
+  return(list(network.nodes, network.links.traffic))
+  
+}
