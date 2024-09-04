@@ -472,8 +472,12 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
 
   # Add LTS (using assumed traffic volumes)
   # Will be updated once simulated traffic volumes are available
+  # Note 'excludeInadequateLanes' will treat on-road cycle lanes as mixed traffic
+  #   if they are too narrow or shared with parking, but only if OSM 'bike lane 
+  #   project' tags are present
   networkOneway <- addLTSAssumedTraffic(list(networkOneway[[1]], 
-                                             networkOneway[[2]]))
+                                             networkOneway[[2]]),
+                                        excludeInadequateLanes = T)
   
   networkFinal <- networkOneway
   
