@@ -25,7 +25,7 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   #   (only supported for Victoria at this stage)
   # •	demFile: if 'addElevation=T', digital elevation model raster file
   # •	ndviFile: if 'addNDVI=T', raster file with NDVI values
-  # • treeCanopyCoverFile: if 'addTreeCanopyCover=T=T', raster file with tree
+  # • treeCanopyCoverFile: if 'addTreeCanopyCover=T', raster file with tree
   #   canopy coverage values
   # • schoolZoneFile: if 'addSchoolZones=T', sqlite file containing roads with
   #   school time speed limit zones
