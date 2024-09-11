@@ -8,13 +8,17 @@ getOsmExtract <- function(region,
                           outputCrs, 
                           regionBufferDist = 10000, 
                           osmGpkg,
-                          retainDownload) {
+                          retainDownload,
+                          useFullExtractHeld = F,
+                          fullExtractLocation = NA) {
   
   # region = "./data/greater_bendigo.sqlite"
   # surroundingRegion = "./data/victoria.sqlite"
   # outputCrs = 7899
   # regionBufferDist = 10000  # 10km
   # osmGpkg = "./output/temp_bendigo_osm.gpkg"
+  # useFullExtractHeld = F
+  # fullExtractLocation = "./data/geofabrik_australia-latest.osm"
 
   # load region and buffer by selected distance (eg 10km)
   region.poly <- st_read(region)
@@ -36,11 +40,30 @@ getOsmExtract <- function(region,
   default.timeout <- getOption("timeout")
   options(timeout = 7200)
   
-  # download the full extract (whole of Australia; quite slow)
-  download.url <- oe_match(surroundingRegion.buffer, crs = outputCrs)$url
-  echo(paste("Downloading OSM extract from", download.url, "\n"))
-  full.extract <- oe_download(download.url, download_directory = ".")
-  
+  # load full extract, if already held (after checking that a location is specified);
+  # or else download full extract (can be quite slow for whole of Australia)
+  if (useFullExtractHeld) {
+    if (is.na(fullExtractLocation)) {
+      echo(paste("No location for existing OSM extract has been specified; downloading extract"))
+      useFullExtractHeld <- F
+    } else if (!file.exists(fullExtractLocation)) {
+      echo(paste0("OSM extract not found at the specified location '", fullExtractLocation, 
+                 "'; downloading extract instead\n"))
+      useFullExtractHeld <- F
+    } else if (!str_ends(fullExtractLocation, ".osm.pbf")) {
+      echo(paste0("File at the specified location '", fullExtractLocation, 
+                 "' is not in expected format; downloading extract instead\n"))
+      useFullExtractHeld <- F
+    }
+  }
+  if (useFullExtractHeld) {
+    full.extract <- fullExtractLocation
+  } else {
+    download.url <- oe_match(surroundingRegion.buffer, crs = outputCrs)$url
+    echo(paste("Downloading OSM extract from", download.url, "\n"))
+    full.extract <- oe_download(download.url, download_directory = "./data")
+  }
+    
   # convert to gpkg, including all layers ('boundary' will clip to bounding box)
   echo(paste("Converting downloaded OSM extract to .gpkg for selected region\n"))
   layers <- st_layers(full.extract)$name
