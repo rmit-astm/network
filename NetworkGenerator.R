@@ -508,6 +508,6 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
 }
 
 ## JUST FOR TESTING
-sink()
-makeNetwork(city = "Bendigo")
-makeNetwork(city = "Melbourne")
+#sink()
+#makeNetwork(city = "Bendigo")
+#makeNetwork(city = "Melbourne")

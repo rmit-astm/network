@@ -136,6 +136,8 @@ exportXML <- function(networkFinal, outputDir){
                         this_link$slope, "</attribute>\n",
                         "        <attribute name=\"bicycleInfrastructureSpeedFactor\" class=\"java.lang.String\">", 
                         this_link$bicycleInfrastructureSpeedFactor, "</attribute>\n",
+                        "        <attribute name=\"lvl_traf_stress\" class=\"java.lang.String\">", 
+                        this_link$lvl_traf_stress, "</attribute>\n",
                         "    </attributes>\n",
                         "    </link>\n")
     
@@ -205,7 +207,7 @@ exportXML <- function(networkFinal, outputDir){
   
   # Adding bicycle and extra information
   links <-  fncols(links, c("id","osm_id", "highway", "cycleway","slope", 
-                            "bicycleInfrastructureSpeedFactor")) 
+                            "bicycleInfrastructureSpeedFactor", "lvl_traf_stress")) 
   links <- links %>%
     # mutate(id = ifelse(is.na(id),row_number(),id)) %>%
     mutate(id = case_when(
@@ -217,7 +219,9 @@ exportXML <- function(networkFinal, outputDir){
     mutate(surface = ifelse(is.na(surface),"asphalt",surface)) %>% 
     mutate(cycleway = replace(cycleway, is.na(cycleway),"No")) %>% 
     mutate(slope = replace(slope, is.na(slope),"NA")) %>% 
-    mutate(bicycleInfrastructureSpeedFactor = 1) 
+    mutate(bicycleInfrastructureSpeedFactor = 1) %>% 
+    mutate(lvl_traf_stress = replace(lvl_traf_stress, is.na(lvl_traf_stress),"NA"))
+    
   # Adding links
   echo('\n')
   echo('Starting to add links to XML\n')
