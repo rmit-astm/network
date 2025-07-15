@@ -138,6 +138,8 @@ exportXML <- function(networkFinal, outputDir){
                         this_link$bicycleInfrastructureSpeedFactor, "</attribute>\n",
                         "        <attribute name=\"lvl_traf_stress\" class=\"java.lang.String\">", 
                         this_link$lvl_traf_stress, "</attribute>\n",
+                        "        <attribute name=\"osm_id\" class=\"java.lang.String\">", 
+                        this_link$osm_id, "</attribute>\n",
                         "    </attributes>\n",
                         "    </link>\n")
     
@@ -206,8 +208,7 @@ exportXML <- function(networkFinal, outputDir){
   #   bi_links) 
   
   # Adding bicycle and extra information
-  links <-  fncols(links, c("id","osm_id", "highway", "cycleway","slope", 
-                            "bicycleInfrastructureSpeedFactor", "lvl_traf_stress")) 
+  links <-  fncols(links, c("id", "highway", "cycleway", "slope", "bicycleInfrastructureSpeedFactor", "lvl_traf_stress", "osm_id")) 
   links <- links %>%
     # mutate(id = ifelse(is.na(id),row_number(),id)) %>%
     mutate(id = case_when(
@@ -218,9 +219,10 @@ exportXML <- function(networkFinal, outputDir){
     mutate(type = replace(highway, is.na(highway), "NotSpecified")) %>% 
     mutate(surface = ifelse(is.na(surface),"asphalt",surface)) %>% 
     mutate(cycleway = replace(cycleway, is.na(cycleway),"No")) %>% 
-    mutate(slope = replace(slope, is.na(slope),"NA")) %>% 
+    mutate(slope = replace(slope, is.na(slope),"")) %>% 
     mutate(bicycleInfrastructureSpeedFactor = 1) %>% 
-    mutate(lvl_traf_stress = replace(lvl_traf_stress, is.na(lvl_traf_stress),"NA"))
+    mutate(lvl_traf_stress = replace(lvl_traf_stress, is.na(lvl_traf_stress),"")) %>% 
+    mutate(osm_id = replace(osm_id, is.na(osm_id),""))
     
   # Adding links
   echo('\n')
