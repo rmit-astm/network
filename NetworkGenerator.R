@@ -105,6 +105,11 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   shortLinkLength=20
   minDangleLinkLengh=500
   crop2Area=F
+  
+  # LINK APPEARANCE SIMPLIFICATION
+  # A flag for whether to simplify the appearence of links while keeping
+  # start and end points unchanged
+  simplifyAppearance=F
 
   # DENSIFICATION
   densificationMaxLength=500
@@ -191,6 +196,7 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   echo(paste0("- Processing the OSM extract:                     ", networkFromOsm,"\n"))
   echo(paste0("- Cropping to a test area:                        ", crop2Area,"\n"))
   echo(paste0("- Simplifying edges:                              ", simplifyEdges, "\n"))
+  echo(paste0("- Simplifying link appearance:                    ", simplifyAppearance, "\n"))
   echo(paste0("- Shortest link length in network simplification: ", shortLinkLength,"\n"))
   echo(paste0("- Adding elevation:                               ", addElevation,"\n"))
   echo(paste0("- Adding destination layer:                       ", addDestinationLayer,"\n"))
@@ -476,8 +482,10 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   
   # Simplify appearance of links to avoid short segments (using
   # douglas-peucker algorithm) but ensure that endpoints remain unchanged
-  system.time(networkOneway[[2]] <- simplifyLinkAppearance(networkOneway[[2]],
-                                                           dTolerance = 20))
+  if (simplifyAppearance) {
+    system.time(networkOneway[[2]] <- simplifyLinkAppearance(networkOneway[[2]],
+                                                             dTolerance = 20))
+  }
 
   # Add LTS (using assumed traffic volumes)
   # Will be updated once simulated traffic volumes are available
