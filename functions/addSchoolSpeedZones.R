@@ -80,26 +80,14 @@ addSchoolSpeedZones <- function(input.links,
     filter(speed_limit < round(freespeed * 3.6)) 
   
   # some links may fall into two or more school speed zones; if so, then select
-  # the speed that applies for the longest part of the link:
-  # find the duplicates
-  duplicate_ids <- selected.links %>%
-    dplyr::select(link_id, speed_limit) %>%
-    distinct()  # 4617
-  duplicates <- duplicate_ids %>%
-    group_by(link_id) %>%
-    summarise(n = n()) %>%
-    ungroup() %>%
-    filter(n > 1)  # 5
-  # select the links, and choose the one with the longest length
-  duplicate.links <- selected.links %>%
-    filter(link_id %in% duplicates$link_id) %>%
-    group_by(link_id) %>%
-    filter(isec_length == max(isec_length)) %>%
-    ungroup()
-  # take original selection, but for duplicates only the longest
+  # the speed that applies for the longest part of the link (or random (first) if equal):
   selected.links.final <- selected.links %>%
-    filter(!link_id %in% duplicate.links$link_id) %>%
-    bind_rows(duplicate.links) %>%
+    group_by(link_id) %>%
+    # speed that applies to longest part
+    filter(isec_length == max(isec_length)) %>%
+    # random (first) if equal
+    slice(1) %>%
+    ungroup() %>%
     # keep only required fields
     dplyr::select(link_id, speed_limit)
   
