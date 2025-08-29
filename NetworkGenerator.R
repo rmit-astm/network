@@ -149,6 +149,13 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   # Select an analysis date, eg a midweek day that's not a public or school holiday
   analysis_date=as.Date("2023-11-15","%Y-%m-%d")
   onroadBus=T  # whether to route buses on roads (rather than create separate pseudo links)
+  
+  # PARALLEL PROCESSING
+  # Maximum number of cores to use in parallel processing (which is used in several
+  # functions): by default, all cores are used, but if parallel processing causes 
+  # memory overflow problems, try setting a maximum number, eg 'maxcores <- 8'; 
+  # but if no problems, leave as 'NA'
+  maxcores <- 12
 
   # Outputs
   # outputSubdirectory=format(Sys.time(),"%d%b%y_%H%M") # date_hour, eg. "17Aug21_1308"
@@ -222,7 +229,8 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   # Processing OSM, or loading existing layers if not required
   if(networkFromOsm) {
     echo(paste0("Starting to process osm extract file, ", osmGpkg, "\n"))
-    networkUnconfiguredOutputs <- processOsm(osmGpkg, region, regionBufferDist, outputCrs)
+    networkUnconfiguredOutputs <- processOsm(osmGpkg, region, regionBufferDist, 
+                                             outputCrs, maxcores)
     
     if (saveUnconfigured) {
       if (file_exists(unconfiguredSqlite)) st_delete(unconfiguredSqlite)
@@ -395,7 +403,8 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
                                     outputCrs,
                                     region,
                                     regionBufferDist,
-                                    localDestinations)
+                                    localDestinations,
+                                    maxcores)
     
     if (city == "Bendigo") {
       if (addBendigoData) {
@@ -450,7 +459,8 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
                                          regionBufferDist,
                                          outputCrs,
                                          onroadBus,
-                                         city)) 
+                                         city,
+                                         maxcores)) 
   }
   
   # Adding school time speed zones to links
@@ -467,7 +477,8 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
                                                      networkOneway[[2]],
                                                      bendigoEverydayRoutes,
                                                      bendigoExistingProtected,
-                                                     outputCrs)
+                                                     outputCrs,
+                                                     maxcores)
       networkOneway[[2]] <- 
         addBendigoProposedProtected(networkOneway[[1]],
                                     networkOneway[[2]],
@@ -476,7 +487,8 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
                                     addNDVI, ndviFile, ndviBuffDist, 
                                     addTreeCanopyCover, treeCanopyCoverFile,
                                     addElevation,
-                                    outputCrs) 
+                                    outputCrs,
+                                    maxcores) 
     }
   }
   

@@ -1,6 +1,7 @@
 # function to convert OSM .gpkg file into network of nodes and edges
 
-processOsm <- function(osmGpkg, region, regionBufferDist = 10000, outputCrs) {
+processOsm <- function(osmGpkg, region, regionBufferDist = 10000, 
+                       outputCrs, maxcores) {
   
   # osmGpkg = "./output/bendigo_osm.gpkg"
   # osmGpkg = "./output/melbourne_osm.gpkg"
@@ -129,7 +130,7 @@ processOsm <- function(osmGpkg, region, regionBufferDist = 10000, outputCrs) {
 
   # split paths at intersections with matching osm_ids
   echo(paste("Splitting", nrow(paths), "paths at intersections\n"))
-  split.path.list <- splitPathsAtPoints(paths, intersections, 0.001, "osm_id")
+  split.path.list <- splitPathsAtPoints(paths, intersections, 0.001, "osm_id", maxcores)
   
   # convert to dataframe, snap to grid, remove empty geometries, add unique id
   echo("Combining the split paths into a single dataframe\n")
@@ -200,7 +201,7 @@ processOsm <- function(osmGpkg, region, regionBufferDist = 10000, outputCrs) {
       distinct()
     
     resplit.path.list <- 
-      splitPathsAtPoints(paths.to.resplit, endpoints.for.resplit, 0.1, "path_id")
+      splitPathsAtPoints(paths.to.resplit, endpoints.for.resplit, 0.1, "path_id", maxcores)
     
     # convert to dataframe, snap to grid, remove empty geometries
     echo("Combining the resplit paths into a single dataframe\n")

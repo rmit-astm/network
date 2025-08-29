@@ -11,7 +11,8 @@ addDestinations <- function(nodes_current,
                             outputCrs,
                             region,
                             regionBufferDist,
-                            localDestinations) {
+                            localDestinations,
+                            maxcores) {
    
   # nodes_current = networkDensified[[1]]
   # edges_current = networkDensified[[2]]
@@ -265,6 +266,7 @@ addDestinations <- function(nodes_current,
   
   # setup for parallel processing and progress reporting
   cores <- detectCores()
+  if (!is.na(maxcores)) cores <- min(cores, maxcores)
   cluster <- parallel::makeCluster(cores)
   doSNOW::registerDoSNOW(cluster)
   pb <- txtProgressBar(max = nrow(dest.large.poly), style = 3)
