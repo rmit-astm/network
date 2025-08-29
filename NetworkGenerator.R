@@ -155,7 +155,7 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   # functions): by default, all cores are used, but if parallel processing causes 
   # memory overflow problems, try setting a maximum number, eg 'maxcores <- 8'; 
   # but if no problems, leave as 'NA'
-  maxcores <- 12
+  maxcores <- NA
 
   # Outputs
   # outputSubdirectory=format(Sys.time(),"%d%b%y_%H%M") # date_hour, eg. "17Aug21_1308"
