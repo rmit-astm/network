@@ -8,7 +8,8 @@ addGtfsLinks <- function(outputLocation,
                          regionBufferDist,
                          outputCrs,
                          onroadBus,
-                         city){
+                         city,
+                         maxcores){
   
   # outputLocation = "./output/generated_network/pt/"
   # nodes = networkOneway[[1]]
@@ -44,7 +45,8 @@ addGtfsLinks <- function(outputLocation,
                                surroundingRegion,
                                regionBufferDist,
                                outputCrs,
-                               onroadBus)
+                               onroadBus,
+                               maxcores)
   
   # unpack the outputs
   stops <- processedGtfs[[1]]
@@ -70,7 +72,8 @@ addGtfsLinks <- function(outputLocation,
     shape.links,
     outputCrs,
     onroadBus,
-    city
+    city,
+    maxcores
   )
   return(edgesCombined)
 }
@@ -85,7 +88,8 @@ processGtfs <- function(outputLocation = "./output/generated_network/pt/",
                         surroundingRegion,
                         regionBufferDist,
                         outputCrs,
-                        onroadBus){
+                        onroadBus,
+                        maxcores){
   
   # outputLocation ="./output/generated_network/pt/"
   # networkNodes = validRoadNodes
@@ -246,6 +250,7 @@ processGtfs <- function(outputLocation = "./output/generated_network/pt/",
   # for bus - nearest valid node on the nearest link
   # setup for parallel processing and progress reporting
   cores <- detectCores()
+  if (!is.na(maxcores)) cores <- min(cores, maxcores)
   cluster <- parallel::makeCluster(cores)
   doSNOW::registerDoSNOW(cluster)
   pb <- txtProgressBar(max = max(nrow(validStopsBus), 2), style = 3)
@@ -374,7 +379,8 @@ exportGtfsSchedule <- function(links,
                                shape.links,
                                outputCrs,
                                onroadBus,
-                               city){
+                               city,
+                               maxcores){
   
   # flag for whether buses are routed onroad (requires 'shape.links' to be created in 'processGtfs')
   if (onroadBus & !is.na(shape.links)[1]) {
@@ -409,13 +415,15 @@ exportGtfsSchedule <- function(links,
                                                      trips, 
                                                      routes, 
                                                      shape.links,
-                                                     existingNodePairs = NA))
+                                                     existingNodePairs = NA,
+                                                     maxcores))
     
     system.time(unroutedStopOutputs <- removeUnroutedStops(stopTimes, 
                                                            trips,
                                                            routes,
                                                            shape.links,
-                                                           nodePairRoutes))
+                                                           nodePairRoutes,
+                                                           maxcores))
     stopTimes <- unroutedStopOutputs[[1]]
     nodePairRoutes <- unroutedStopOutputs[[2]]
     
@@ -872,7 +880,8 @@ findNodePairRoutes <- function(stopTimes,
                                trips, 
                                routes, 
                                shape.links,
-                               existingNodePairs = NA) {
+                               existingNodePairs = NA,
+                               maxcores) {
   
   nodePairs <- stopTimes %>%
     # filter to bus
@@ -910,6 +919,7 @@ findNodePairRoutes <- function(stopTimes,
     
     # setup for parallel processing and progress reporting
     cores <- detectCores()
+    if (!is.na(maxcores)) cores <- min(cores, maxcores)
     cluster <- parallel::makeCluster(cores)
     doSNOW::registerDoSNOW(cluster)
     pb <- txtProgressBar(max = max(nrow(nodePairs), 2), style = 3)
@@ -966,7 +976,8 @@ removeUnroutedStops <- function(stopTimes,
                                 trips,
                                 routes,
                                 shape.links,
-                                nodePairRoutes) {
+                                nodePairRoutes,
+                                maxcores) {
   
   # find missing pair routes
   missingPairRoutes <- nodePairRoutes %>% filter(is.na(link_ids))
@@ -1015,7 +1026,8 @@ removeUnroutedStops <- function(stopTimes,
                                        trips,
                                        routes,
                                        shape.links,
-                                       existingNodePairs = nodePairRoutes)
+                                       existingNodePairs = nodePairRoutes,
+                                       maxcores)
     
     # add new pairs to output, and recalculate missing pair routes
     nodePairRoutes <- rbind(nodePairRoutes, newNodePairs)

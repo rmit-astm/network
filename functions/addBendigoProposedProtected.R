@@ -11,7 +11,8 @@ addBendigoProposedProtected <- function(network.nodes,
                                         addNDVI, ndviFile, ndviBuffDist, 
                                         addTreeCanopyCover, treeCanopyCoverFile,
                                         addElevation,
-                                        outputCrs) {
+                                        outputCrs,
+                                        maxcores) {
   
   # network.nodes = networkOneway[[1]]
   # network.links = networkOneway[[2]]
@@ -48,6 +49,7 @@ addBendigoProposedProtected <- function(network.nodes,
   # -----------------------------------#
   
   cores <- detectCores()
+  if (!is.na(maxcores)) cores <- min(cores, maxcores)
   cluster <- parallel::makeCluster(cores)
   doSNOW::registerDoSNOW(cluster)
   pb <- txtProgressBar(max = max(nrow(protected.routes), 2), style = 3)

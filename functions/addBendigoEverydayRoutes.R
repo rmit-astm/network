@@ -4,7 +4,8 @@ addBendigoEverydayRoutes <- function(network.nodes,
                                      network.links,
                                      everyday.route.location,
                                      existing.protected.location,
-                                     outputCrs) {
+                                     outputCrs,
+                                     maxcores) {
   
   # network.nodes = networkOneway[[1]]
   # network.links = networkOneway[[2]]
@@ -252,6 +253,7 @@ addBendigoEverydayRoutes <- function(network.nodes,
   # -----------------------------------#
   
   cores <- detectCores()
+  if (!is.na(maxcores)) cores <- min(cores, maxcores)
   cluster <- parallel::makeCluster(cores)
   doSNOW::registerDoSNOW(cluster)
   pb <- txtProgressBar(max = max(nrow(split.routes), 2), style = 3)
