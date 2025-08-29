@@ -95,6 +95,10 @@ getRegionDem(dem.location = "./data/vmelev_dem10m_ESRI_grid_GDA94_VicGrid/vmelev
              region.location = "./data/greater_melbourne.sqlite", regionBufferDist = 10000,
              output.filename = "dem_melbourne", outputCrs = "EPSG:7899")
 
+# Victoria
+getRegionDem(dem.location = "./data/vmelev_dem10m_ESRI_grid_GDA94_Vicgrid/vmelev_dem10m/dem10m/hdr.adf",
+             region.location = "./data/victoria.sqlite", regionBufferDist = 10000,
+             output.filename = "dem_victoria", outputCrs = "EPSG:7899")
 
 # 3 School speed zones ----
 # -----------------------------------------------------------------------------#
