@@ -98,7 +98,10 @@ getOsmExtract <- function(region,
     # some features have validity problems that cause intersection issues
     # (and may not be detected by st_is_valid) - find and remove them
     problem.features <- c()
-    
+    # reset each iteration so a failure can never silently write the previous
+    # layer's intersected geometry (or an undefined object)
+    current.layer.intersected <- NULL
+
     # create current.layer.intersected if possible, or else identify problem features
     tryCatch({
       if (current.layer.name == "lines") {
@@ -127,10 +130,13 @@ getOsmExtract <- function(region,
         })
       }
     })
-    
-    # if problem features found, remove from current layer and create current.layer.intersected
-    if (length(problem.features) > 0) {
-      current.layer <- current.layer[-problem.features,]
+
+    # if the whole-layer intersect failed (current.layer.intersected still NULL),
+    # remove any identified problem features and recompute
+    if (is.null(current.layer.intersected)) {
+      if (length(problem.features) > 0) {
+        current.layer <- current.layer[-problem.features,]
+      }
       if (current.layer.name == "lines") {
         current.layer.intersected <- current.layer %>%
           st_filter(surroundingRegion.buffer, .predicate = st_intersects)
@@ -139,7 +145,7 @@ getOsmExtract <- function(region,
           st_filter(region.buffer, .predicate = st_intersects)
       }
     }
-    
+
     st_write(current.layer.intersected,
              osmGpkg, 
              layer = current.layer.name,
