@@ -850,6 +850,7 @@ makeShapeSubnetwork <- function(gtfs,
   
   # make a  graph of the shape links, and remove any small sections (< 10 nodes)
   g <- graph_from_data_frame(shape.links %>%
+                               st_drop_geometry() %>%
                                dplyr::select(from_id, to_id),
                              directed = T)
   components <- components(g)
@@ -913,6 +914,7 @@ findNodePairRoutes <- function(stopTimes,
     # directed graph of shape nodes and links
     shape.g <- 
       graph_from_data_frame(shape.links %>%
+                              st_drop_geometry() %>%
                               dplyr::select(from_id, to_id, weight = length, link_id),
                             # dplyr::select(from_id, to_id, weight = length/freespeed, link_id), # time rather than length
                             directed = T)
