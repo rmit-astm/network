@@ -91,7 +91,7 @@ addDestinations <- function(nodes_current,
   echo("Finding destinations and their nearby nodes\n")
   
   # create tables for points, polygons and lines (if any), allocate unique id's 
-  # (so featureswith multiple multiple nodes can be grouped by the id where 
+  # (so features with multiple nodes can be grouped by the id where
   # required), and store area and location details
   
   # note - localDestinations are assumed to be POINT, MULTIPOINT, POLYGON,

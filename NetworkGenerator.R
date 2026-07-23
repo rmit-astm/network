@@ -107,7 +107,7 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   crop2Area=F
   
   # LINK APPEARANCE SIMPLIFICATION
-  # A flag for whether to simplify the appearence of links while keeping
+  # A flag for whether to simplify the appearance of links while keeping
   # start and end points unchanged
   simplifyAppearance=F
 
@@ -209,7 +209,7 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   echo(paste0("- Adding destination layer:                       ", addDestinationLayer,"\n"))
   echo(paste0("- Adding NDVI:                                    ", addNDVI,"\n"))
   echo(paste0("- Adding Tree Canopy Cover Percentage:            ", addTreeCanopyCover,"\n"))
-  echo(paste0("- Adding school speed tme speed limit zones:      ", addSchoolZones, "\n"))
+  echo(paste0("- Adding school time speed limit zones:           ", addSchoolZones, "\n"))
   echo(paste0("- Adding PT from GTFS:                            ", addGtfs,"\n"))
   echo(paste0("- Writing outputs in SQLite format:               ", writeSqlite,"\n"))
   echo(paste0("- Writing outputs in ShapeFile format:            ", writeShp,"\n"))
@@ -276,7 +276,7 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   highway_lookup <- defaults_df %>% dplyr::select(highway, highway_order)
   echo("Processing OSM tags and joining with defaults\n")
   if (simplifyEdges) {
-    message("As 'simplifyEdges is True, OSM 'bike lane project' tags will not be extracted: the edge simplification functions are not configured for them.  If the 'bike lane project' tags are required, set 'simplfyEdges' to False.")
+    message("As 'simplifyEdges' is True, OSM 'bike lane project' tags will not be extracted: the edge simplification functions are not configured for them.  If the 'bike lane project' tags are required, set 'simplifyEdges' to False.")
   }
   system.time( osmAttributes <- processOsmTags(osm_metadata, defaults_df, simplifyEdges))
   
@@ -359,7 +359,7 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   networkConnected <- largestNetworkSubgraph(networkNonDisconnected,'walk')
   
   # densify the network so that no residential streets are longer than 500m
-  if (addElevation==T & densifyBikeways==F) message("Consider changing densifyBikeways to true when addElevation is true to get a more accurate slope esimation for bikeways")
+  if (addElevation==T & densifyBikeways==F) message("Consider changing densifyBikeways to true when addElevation is true to get a more accurate slope estimation for bikeways")
   networkDensified <- densifyNetwork(networkConnected,densificationMaxLength,
                                      densifyBikeways)
   
