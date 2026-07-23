@@ -15,7 +15,7 @@ Download the following files (as required) for the relevant network location.
 | NDVI_Bendigo_2023.tif    | NDVI data for the Greater Bendigo area              |
 | TCC_Bendigo_5m.tif       | Tree canopy cover data for the Greater Bendigo area |
 | school_zones_March_2024.sqlite | School zone locations for Victoria          |
-| gtfs.zip                 | GTFS feed for Victoria as at 20 October 2023      |
+| gtfs.zip                 | GTFS feed for Victoria (see 'GTFS feed' section below) |
 
 
 ### Melbourne
@@ -27,7 +27,7 @@ Download the following files (as required) for the relevant network location.
 | NDVI_Melbourne_2023.tif  | NDVI data for the Greater Melbourne area        |
 | TCC_Melbourne_5m.tif       | Tree canopy cover data for the Greater Melbourne area |
 | school_zones_March_2024.sqlite | School zone locations for Victoria          |
-| gtfs.zip                 | GTFS feed for Victoria as at 20 October 2023      |
+| gtfs.zip                 | GTFS feed for Victoria (see 'GTFS feed' section below) |
 
 
 ## Other files
@@ -52,6 +52,29 @@ The file `data/data prep tools.R` contains:
 * the script used to crop the digital elevation files from a DEM file for the whole of Victoria (available for download from https://discover.data.vic.gov.au/dataset/vicmap-elevation-dem-10m, 9.3 GB), and  
 * the script used to extract the school speed zones from the speed zone file above.
 Those scripts may also be useful to generate similar data input files for other locations if required.
+
+## GTFS feed
+
+The pipeline reads `gtfs.zip` as a single flat GTFS feed (with `stops.txt`,
+`routes.txt` etc. at the top level). The current PTV feed, downloaded from
+https://data.ptv.vic.gov.au/downloads/gtfs.zip, is instead a **nested bundle**:
+the outer zip contains numbered folders (1..N), each holding a `google_transit.zip`
+for one mode (1 = Regional Train, 2 = Metro Train, 3 = Metro Tram, 4 = Metro Bus,
+5 = Regional Coach, 6 = Regional Bus). It also uses "extended" route types and
+sets every sub-feed's `agency_id` to the same value.
+
+Use `functions/prepareGtfs.R` to convert the raw PTV bundle into the flat feed the
+pipeline expects. It merges folders 1–6 into one feed, sets each sub-feed's
+`agency_id` to its folder number (which the mode classification relies on) and
+normalizes extended route types to the basic types:
+
+```r
+source("functions/prepareGtfs.R"); library(dplyr)
+prepareGtfs("./data/gtfs_ptv_bundle.zip", "./data/gtfs.zip", folders = 1:6)
+```
+
+Remember to set `analysis_date` in `NetworkGenerator.R` to a normal midweek day
+within the downloaded feed's calendar window.
 
 The NDVI files were created from Sentinel 2 data using Google Earth Engine at https://code.earthengine.google.com/.
 
