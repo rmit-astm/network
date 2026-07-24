@@ -56,6 +56,17 @@ Rscript -e 'source("NetworkGenerator.R"); makeNetwork(, "Melbourne", "example")'
 
 ```
 
+## Using the pipeline for other cities
+
+The pipeline was developed and tested for Melbourne and Bendigo (Victoria, Australia), but is intended to work for other cities that have OpenStreetMap coverage and a GTFS feed. To build a network for another city, add a new 'city' block in `NetworkGenerator.R` using the existing ones as a template, and check the following. Users outside Australia should pay particular attention to the same points.
+
+* **Coordinate system**: set `outputCrs` to a projected EPSG code suitable for the city (a metre-based local projection, not lat/long).
+* **Region boundaries**: supply `region` (and `surroundingRegion`) boundary files for the city. If a wider surrounding region is not required, set `surroundingRegion` to the same file as `region`.
+* **OpenStreetMap**: network quality depends on local OSM completeness, which varies between cities.
+* **GTFS packaging**: the pipeline expects `gtfs_feed` to be a single flat GTFS zip (with `stops.txt`, `routes.txt` etc. at the top level). Some agencies (eg PTV in Victoria) instead distribute a nested bundle of per-mode feeds; use `functions/prepareGtfs.R` to flatten these first (see `data/README.md`).
+* **GTFS route types**: public transport modes are classified from the standard GTFS `route_type` codes (see `getPTStops.R` and `gtfs2PtNetwork.R`). Feeds that use non-standard or 'extended' route type codes need to be converted first, or the codes in those two functions adjusted.
+* **Regional service filter**: where `surroundingRegion` differs from `region`, `gtfs2PtNetwork.R` keeps only regional services in the wider area, using agency ids specific to the PTV feed (1 = V/Line, 5, 6 = regional coach/bus). For other feeds, either set `surroundingRegion` to the same file as `region`, or edit these ids.
+
 ## Troubleshooting
 ### Installing sf
 SF package in R requires a few dependencies, see https://r-spatial.github.io/sf/ for more details.
