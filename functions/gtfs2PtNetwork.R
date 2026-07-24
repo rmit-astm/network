@@ -118,16 +118,25 @@ processGtfs <- function(outputLocation = "./output/generated_network/pt/",
     mutate(route_id=as.factor(route_id))
   
   # routes that are part of a valid trip
+  # Classify each route's mode from its GTFS 'route_type' - the standard field
+  # that every compliant feed provides (as in getPTStops.R and
+  # https://developers.google.com/transit/gtfs/reference), so this works for any
+  # city's feed rather than relying on a particular agency's id numbering. Only
+  # tram, train and bus are built into the pt network; other modes (eg ferry) are
+  # dropped. If a feed uses non-standard or extended route type codes, convert
+  # them first (eg with prepareGtfs.R) or adjust the codes below.
   validRoutes <- gtfs$routes %>%
     filter(route_id %in% validTrips$route_id) %>%
-    mutate(service_type="null",
-           service_type=ifelse(agency_id%in%c(3)   & route_type%in%c(0),  "tram" ,service_type),
-           service_type=ifelse(agency_id%in%c(1,2) & route_type%in%c(1,2),"train",service_type),
-           service_type=ifelse(agency_id%in%c(4,5,6) & route_type%in%c(3),  "bus"  ,service_type)) %>%
-    filter(service_type!="null") %>%  # eg skybus
+    mutate(route_type=as.integer(route_type),
+           service_type=case_when(
+             route_type %in% c(0, 5)  ~ "tram",   # tram, cable tram
+             route_type %in% c(1, 2)  ~ "train",  # metro, rail
+             route_type %in% c(3, 11) ~ "bus",    # bus, trolleybus
+             TRUE                     ~ "null")) %>%
+    filter(service_type!="null") %>%  # eg ferry, or unsupported modes
     mutate(route_id=as.factor(route_id)) %>%
     mutate(service_type=as.factor(service_type)) %>%
-    dplyr::select(route_id,service_type,agency_id)
+    dplyr::select(any_of(c("route_id","service_type","agency_id")))
   
   # some trips won't have any valid routes, so they must be removed
   validTrips <- validTrips %>%
@@ -171,7 +180,7 @@ processGtfs <- function(outputLocation = "./output/generated_network/pt/",
     left_join(., validTrips %>% dplyr::select(trip_id, route_id) %>% distinct(), 
               by = "trip_id") %>%
     left_join(., validRoutes, by = "route_id") %>%
-    distinct(stop_id, service_type, agency_id)
+    distinct(across(any_of(c("stop_id", "service_type", "agency_id"))))
   
   validStops <- validStops %>%
     left_join(serviceTable, by = "stop_id")
@@ -198,8 +207,16 @@ processGtfs <- function(outputLocation = "./output/generated_network/pt/",
   regionStops <- validStops %>%
     st_filter(region.buffer, .predicate = st_intersects)
   surroundingRegionStops <- validStops %>%
-    st_filter(surroundingRegion.buffer, .predicate = st_intersects) %>%
-    filter(agency_id %in% c(1, 5, 6))  # 1 = vline; 5/6 = regional coach/bus
+    st_filter(surroundingRegion.buffer, .predicate = st_intersects)
+  # In the wider surrounding region only, keep long-distance/regional services
+  # rather than every local stop. This filter is specific to the PTV feed, where
+  # agency_id 1 = V/Line (regional train) and 5, 6 = regional coach/bus. For
+  # other cities, either set surroundingRegion = region (so this step is not
+  # needed), or edit the agency ids. Skipped if the feed has no agency_id.
+  if (surroundingRegion != region & "agency_id" %in% names(surroundingRegionStops)) {
+    surroundingRegionStops <- surroundingRegionStops %>%
+      filter(agency_id %in% c(1, 5, 6))  # 1 = vline; 5/6 = regional coach/bus
+  }
   validStops <- bind_rows(regionStops, surroundingRegionStops) %>%
     group_by(stop_id) %>% slice(1) %>% ungroup()
 
