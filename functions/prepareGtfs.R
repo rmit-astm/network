@@ -108,6 +108,18 @@ prepareGtfs <- function(inputBundle,
     merged$agency <- dplyr::distinct(merged$agency, agency_id, .keep_all = TRUE)
   }
 
+  # drop duplicate ids that would make the feed invalid (some source feeds
+  # contain a small number of duplicate trips or stop_times)
+  if (!is.null(merged$trips)) {
+    merged$trips <- dplyr::distinct(merged$trips, trip_id, .keep_all = TRUE)
+  }
+  if (!is.null(merged$stop_times)) {
+    merged$stop_times <- dplyr::distinct(merged$stop_times, trip_id, stop_sequence, .keep_all = TRUE)
+  }
+  if (!is.null(merged$stops)) {
+    merged$stops <- dplyr::distinct(merged$stops, stop_id, .keep_all = TRUE)
+  }
+
   message("Writing flat merged feed: ", outputZip)
   gtfsio::export_gtfs(gtfsio::new_gtfs(merged), outputZip)
 
