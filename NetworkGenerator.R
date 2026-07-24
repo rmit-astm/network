@@ -8,12 +8,19 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   
   # CITY PARAMETERS
   # City parameters to be set
-  # •	region: if 'downloadOsm=T', file delineating the boundary of the area for 
-  #   which Osm extract is to be downloaded (assumed to be in sqlite format 
-  #   with a single layer)
+  # •	region: sqlite file defining boundary of the area for which the OSM 
+  #   extract is required, to be used for fully-detailed road and public 
+  #   transport network and extracted destinations
+  # •	surroundingRegion: sqlite file defining boundary of a wider area for 
+  #   which the OSM extract is required (eg state), to be used for sparser wide 
+  #   road and public transport network (if not required, then make this the 
+  #   same as 'region')
   # •	outputCrs: desired coordinate system for network
+  # •	fullExtractLocation: if 'extractOsm=T' and 'useFullExtractHeld=T', location 
+  #   where an .osm.pbf file is already held which is to be clipped and converted
+  #   to a .gpkg file for the region
   # •	osmGpkg: location where downloaded OSM extract for region is to be stored
-  #   (if 'downloadOsm=T') and/or read from (if 'processOsm=T')
+  #   (if 'extractOsm=T') and/or read from (if 'processOsm=T')
   # •	unconfiguredSqlite: location where processed OSM file is to be stored
   #   (if 'networkFromOsm=T') or read from (if 'networkFromOsm=F')
   # •	cropAreaPoly: if 'crop2TestArea=T' cropArea location from 
@@ -21,27 +28,48 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   #   (only supported for Victoria at this stage)
   # •	demFile: if 'addElevation=T', digital elevation model raster file
   # •	ndviFile: if 'addNDVI=T', raster file with NDVI values
+  # • treeCanopyCoverFile: if 'addTreeCanopyCover=T', raster file with tree
+  #   canopy coverage values
+  # • schoolZoneFile: if 'addSchoolZones=T', sqlite file containing roads with
+  #   school time speed limit zones
   # •	gtfs_feed: if 'addGtfs=T' or 'addDestinationLayer=T, zip file containing 
   #   GTFS data (and, if 'addGtfs=T', also set analysis date in GTFS section)
 
   if (city == "Bendigo") {
     region = "./data/greater_bendigo.sqlite"
+    surroundingRegion = "./data/victoria.sqlite"
     outputCrs = 7899
+    fullExtractLocation = "./data/geofabrik_australia-latest.osm.pbf"
     osmGpkg = "./output/bendigo_osm.gpkg"
     unconfiguredSqlite = "./output/bendigo_network_unconfigured.sqlite"
     cropAreaPoly = ""  # must set 'crop2Area=F'
     demFile = "./data/dem_bendigo.tif" 
     ndviFile = "./data/NDVI_Bendigo_2023.tif" 
+    treeCanopyCoverFile = "./data/TCC_Bendigo_5m.tif" 
+    schoolZoneFile = "./data/school_zones_March_2024.sqlite"
     gtfs_feed = "./data/gtfs.zip"
-    
+    # city-specific data
+    addBendigoData = T
+    bendigoParking = "./data/CoGB_Parking_GIS_Layers_GDA2020Z55_20240222.zip"
+    bendigoParkingPoly = "/CoGB_Parking_Polygons_GDA2020Z55_20240222.shp"
+    bendigoParkingLine = "/CoGB_Parking_Lines_GDA2020Z55_20240222.shp"
+    bendigoBikeRacks = "./data/Bike Racks_v1.2.csv"
+    bendigoEverydayRoutes = "./data/cogb-cycling-everyday-rides.shz"
+    bendigoExistingProtected = "./data/cogb_existing_protected_network.sqlite"
+    bendigoProposedProtected = "./data/cogb_proposed_protected_network.sqlite"
+
   } else if (city == "Melbourne") {
     region = "./data/greater_melbourne.sqlite"
+    surroundingRegion = "./data/victoria.sqlite"
     outputCrs = 7899
+    fullExtractLocation = "./data/geofabrik_australia-latest.osm.pbf"
     osmGpkg = "./output/melbourne_osm.gpkg"
     unconfiguredSqlite = "./output/melbourne_network_unconfigured.sqlite"
     cropAreaPoly = "city-of-melbourne_victoria"
     demFile = "./data/dem_melbourne.tif"
     ndviFile = "./data/NDVI_Melbourne_2023.tif"
+    treeCanopyCoverFile = "./data/TCC_Melbourne_5m.tif"  
+    schoolZoneFile = "./data/school_zones_March_2024.sqlite"
     gtfs_feed = "./data/gtfs.zip"
 
   } else {
@@ -53,11 +81,14 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   # Distance to buffer region when getting osm extract, destinations or gtfs routes
   regionBufferDist=10000
   
-  # DOWNLOAD OSM EXTRACT
-  # A flag for whether to download osm extract for the region (if not, and if
-  # network needs to be processed, then must already have osmGpkg file)
-  downloadOsm=T
-  retainDownload=F  # Whether to retain downloaded file after region extracted
+  # EXTRACT OSM for REGION
+  # A flag for whether to make an OSM extract for the region, either by downloading
+  # an extract in .osm.pbf format and clipping it to the region, or by clipping
+  # an existing extract in .osm.pbf format (if not, and if network needs to be 
+  # processed, then must already have osmGpkg file)
+  extractOsm=T
+  useFullExtractHeld=F  # Whether to use an existing OSM extract, instead of downloading
+  retainDownload=T  # Whether to retain downloaded file after region extracted
   
   # NETWORK FROM OSM 
   # A flag for whether to build unconfigured network from osm extract (if not,
@@ -66,9 +97,19 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   saveUnconfigured=T
 
   # SIMPLIFICATION
+  # A flag for whether to simplify edges by combining edges between the same 
+  # nodes, simplifying chains of edges, and removing dangles (note: if T, then
+  # 'bike lane project' tags will not be collected when processing OSM tags,
+  # as the simplification functions are not configured for them)
+  simplifyEdges=F
   shortLinkLength=20
   minDangleLinkLengh=500
   crop2Area=F
+  
+  # LINK APPEARANCE SIMPLIFICATION
+  # A flag for whether to simplify the appearance of links while keeping
+  # start and end points unchanged
+  simplifyAppearance=F
 
   # DENSIFICATION
   densificationMaxLength=500
@@ -90,16 +131,31 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
 
   # NDVI
   # A flag for whether to add NDVI or not
-  addNDVI=T
+  addNDVI=F
   # Buffer distance for finding average NDVI for links
   ndviBuffDist=30
 
+  # TREE CANOPY COVER
+  # A flag for whether to add tree canopy cover or not
+  addTreeCanopyCover=T
+  
+  # SCHOOL ZONES
+  # A flag for whether to add school time speed limit zones or not
+  addSchoolZones=T
+  
   # GTFS
   # A flag for whether to add a network based on GTFS or not
   addGtfs=T
   # Select an analysis date, eg a midweek day that's not a public or school holiday
   analysis_date=as.Date("2023-11-15","%Y-%m-%d")
   onroadBus=T  # whether to route buses on roads (rather than create separate pseudo links)
+  
+  # PARALLEL PROCESSING
+  # Maximum number of cores to use in parallel processing (which is used in several
+  # functions): by default, all cores are used, but if parallel processing causes 
+  # memory overflow problems, try setting a maximum number, eg 'maxcores <- 8'; 
+  # but if no problems, leave as 'NA'
+  maxcores <- NA
 
   # Outputs
   # outputSubdirectory=format(Sys.time(),"%d%b%y_%H%M") # date_hour, eg. "17Aug21_1308"
@@ -127,7 +183,6 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   library(parallel)
   library(foreach)
   library(nngeo)
-  library(igraph)
 
   # Building the output folder structure ------------------------------------
   outputDir <- paste0("output/",outputSubdirectory)
@@ -144,13 +199,17 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   echo("========================================================\n")
   echo("                **Network Generation Setting**          \n")
   echo("--------------------------------------------------------\n")
-  echo(paste0("- Downloading OSM extract:                        ", downloadOsm,"\n"))
+  echo(paste0("- Getting OSM extract:                            ", extractOsm,"\n"))
   echo(paste0("- Processing the OSM extract:                     ", networkFromOsm,"\n"))
   echo(paste0("- Cropping to a test area:                        ", crop2Area,"\n"))
+  echo(paste0("- Simplifying edges:                              ", simplifyEdges, "\n"))
+  echo(paste0("- Simplifying link appearance:                    ", simplifyAppearance, "\n"))
   echo(paste0("- Shortest link length in network simplification: ", shortLinkLength,"\n"))
   echo(paste0("- Adding elevation:                               ", addElevation,"\n"))
   echo(paste0("- Adding destination layer:                       ", addDestinationLayer,"\n"))
   echo(paste0("- Adding NDVI:                                    ", addNDVI,"\n"))
+  echo(paste0("- Adding Tree Canopy Cover Percentage:            ", addTreeCanopyCover,"\n"))
+  echo(paste0("- Adding school time speed limit zones:           ", addSchoolZones, "\n"))
   echo(paste0("- Adding PT from GTFS:                            ", addGtfs,"\n"))
   echo(paste0("- Writing outputs in SQLite format:               ", writeSqlite,"\n"))
   echo(paste0("- Writing outputs in ShapeFile format:            ", writeShp,"\n"))
@@ -159,16 +218,19 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   echo("                **Launching Network Generation**        \n")
   echo("--------------------------------------------------------\n")
   
-  # Downloading OSM
-  if (downloadOsm) {
-    echo(paste0("Downloading OSM extract for ", city, "\n"))
-    getOsmExtract(region, outputCrs, regionBufferDist, osmGpkg, retainDownload)
+  # Extracting OSM
+  if (extractOsm) {
+    echo(paste0("Extracting OSM for ", city, "\n"))
+    getOsmExtract(region, surroundingRegion, outputCrs, 
+                  regionBufferDist, osmGpkg, retainDownload,
+                  useFullExtractHeld, fullExtractLocation)
   }
   
   # Processing OSM, or loading existing layers if not required
   if(networkFromOsm) {
     echo(paste0("Starting to process osm extract file, ", osmGpkg, "\n"))
-    networkUnconfiguredOutputs <- processOsm(osmGpkg, outputCrs)
+    networkUnconfiguredOutputs <- processOsm(osmGpkg, region, regionBufferDist, 
+                                             outputCrs, maxcores)
     
     if (saveUnconfigured) {
       if (file_exists(unconfiguredSqlite)) st_delete(unconfiguredSqlite)
@@ -213,64 +275,82 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   defaults_df <- buildDefaultsDF()
   highway_lookup <- defaults_df %>% dplyr::select(highway, highway_order)
   echo("Processing OSM tags and joining with defaults\n")
-  system.time( osmAttributes <- processOsmTags(osm_metadata,defaults_df))
+  if (simplifyEdges) {
+    message("As 'simplifyEdges' is True, OSM 'bike lane project' tags will not be extracted: the edge simplification functions are not configured for them.  If the 'bike lane project' tags are required, set 'simplifyEdges' to False.")
+  }
+  system.time( osmAttributes <- processOsmTags(osm_metadata, defaults_df, simplifyEdges))
   
   edgesAttributed <- networkUnconfigured[[2]] %>%
     inner_join(osmAttributes, by="osm_id") %>%
     dplyr::select(-highway, highway_order)
   
+  # exclude contraflow bikelanes in 'surroundingRegion' if it is different from 
+  # 'region', and if edges are being simplified (because the surroundingRegion
+  # contains main roads only, and simplification can extend contraflow lanes for 
+  # very long distances along them)
+  if (simplifyEdges & surroundingRegion != region) {
+    edgesAttributed <- confineContrabikeToRegion(edgesAttributed, region,
+                                                 regionBufferDist, outputCrs)
+  }
+
   # keep only the largest connected component
   largestComponent <- largestConnectedComponent(networkUnconfigured[[1]], edgesAttributed)
-  
-  # simplify intersections while preserving attributes and original geometry.
+
+  # simplify intersections while preserving attributes and original geometry
   system.time(intersectionsSimplified <- simplifyIntersections(largestComponent[[1]],
                                                                largestComponent[[2]],
                                                                shortLinkLength,
                                                                outputCrs))
   
-  # Merge edges going between the same two nodes, picking the shortest geometry.
-  # * One-way edges going in the same direction will be merged
-  # * Pairs of one-way edges in opposite directions will be merged into a two-way edge.
-  # * Two-way edges will be merged regardless of direction.
-  # * One-way edges will NOT be merged with two-way edges.
-  # * Non-car edges do NOT count towards the merged lane count (permlanes)
-  system.time(edgesCombined <- combineRedundantEdges(intersectionsSimplified[[1]],
-                                                     intersectionsSimplified[[2]],
-                                                     outputCrs))
-  
-  # Merge one-way and two-way edges going between the same two nodes. In these 
-  # cases, the merged attributes will be two-way.
-  # This guarantees that there will only be a single edge between any two nodes.
-  system.time(combinedUndirectedAndDirected <- 
-                combineUndirectedAndDirectedEdges(edgesCombined[[1]],
-                                                  edgesCombined[[2]],
-                                                  outputCrs))
-  
-  # If there is a chain of edges between intersections, merge them together
-  system.time(edgesSimplified <- simplifyLines(combinedUndirectedAndDirected[[1]],
-                                               combinedUndirectedAndDirected[[2]]))
-  
-  # Remove dangles
-  system.time(noDangles <- removeDangles(edgesSimplified[[1]],edgesSimplified[[2]],
-                                         minDangleLinkLengh))
-  
-  # Do a second round of simplification.
-  system.time(edgesCombined2 <- combineRedundantEdges(noDangles[[1]],
-                                                      noDangles[[2]],
-                                                      outputCrs))
-  system.time(combinedUndirectedAndDirected2 <- 
-                combineUndirectedAndDirectedEdges(edgesCombined2[[1]],
-                                                  edgesCombined2[[2]],
-                                                  outputCrs))
-  
-  system.time(edgesSimplified2 <- simplifyLines(combinedUndirectedAndDirected2[[1]],
-                                                combinedUndirectedAndDirected2[[2]]))
-  system.time(edgesCombined3 <- combineRedundantEdges(edgesSimplified2[[1]],
-                                                      edgesSimplified2[[2]],
-                                                      outputCrs))
-  
-  networkMode <- addMode(edgesCombined3)
-  
+  # simplify edges while preserving attributes and original geometry
+  if (simplifyEdges) {
+    # Merge edges going between the same two nodes, picking the shortest geometry.
+    # * One-way edges going in the same direction will be merged
+    # * Pairs of one-way edges in opposite directions will be merged into a two-way edge.
+    # * Two-way edges will be merged regardless of direction.
+    # * One-way edges will NOT be merged with two-way edges.
+    # * Non-car edges do NOT count towards the merged lane count (permlanes)
+    system.time(edgesCombined <- combineRedundantEdges(intersectionsSimplified[[1]],
+                                                       intersectionsSimplified[[2]],
+                                                       outputCrs))
+    
+    # Merge one-way and two-way edges going between the same two nodes. In these 
+    # cases, the merged attributes will be two-way.
+    # This guarantees that there will only be a single edge between any two nodes.
+    system.time(combinedUndirectedAndDirected <- 
+                  combineUndirectedAndDirectedEdges(edgesCombined[[1]],
+                                                    edgesCombined[[2]],
+                                                    outputCrs))
+    
+    # If there is a chain of edges between intersections, merge them together
+    system.time(edgesSimplified <- simplifyLines(combinedUndirectedAndDirected[[1]],
+                                                 combinedUndirectedAndDirected[[2]]))
+    
+    # Remove dangles
+    system.time(noDangles <- removeDangles(edgesSimplified[[1]],edgesSimplified[[2]],
+                                           minDangleLinkLengh))
+    
+    # Do a second round of simplification.
+    system.time(edgesCombined2 <- combineRedundantEdges(noDangles[[1]],
+                                                        noDangles[[2]],
+                                                        outputCrs))
+    system.time(combinedUndirectedAndDirected2 <- 
+                  combineUndirectedAndDirectedEdges(edgesCombined2[[1]],
+                                                    edgesCombined2[[2]],
+                                                    outputCrs))
+    
+    system.time(edgesSimplified2 <- simplifyLines(combinedUndirectedAndDirected2[[1]],
+                                                  combinedUndirectedAndDirected2[[2]]))
+    system.time(edgesCombined3 <- combineRedundantEdges(edgesSimplified2[[1]],
+                                                        edgesSimplified2[[2]],
+                                                        outputCrs))
+    
+    networkMode <- addMode(edgesCombined3)
+    
+  } else {
+    networkMode <- addMode(intersectionsSimplified)
+  }
+
   # ensure transport is a directed routeable graph for each mode (i.e., connected
   # subgraph). The first function ensures a connected directed subgraph and the
   # second function ensures a connected subgraph but doesn't consider directionality.
@@ -279,7 +359,7 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   networkConnected <- largestNetworkSubgraph(networkNonDisconnected,'walk')
   
   # densify the network so that no residential streets are longer than 500m
-  if (addElevation==T & densifyBikeways==F) message("Consider changing densifyBikeways to true when addElevation is true to get a more accurate slope esimation for bikeways")
+  if (addElevation==T & densifyBikeways==F) message("Consider changing densifyBikeways to true when addElevation is true to get a more accurate slope estimation for bikeways")
   networkDensified <- densifyNetwork(networkConnected,densificationMaxLength,
                                      densifyBikeways)
   
@@ -291,8 +371,30 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
                                                        outputCrs))
   }
   
+  # Adding Tree Canopy Cover Percentage to links
+  if(addTreeCanopyCover) {
+    system.time(networkDensified[[2]] <- addTreeCanopyCover2Links(networkDensified[[2]],
+                                                                  treeCanopyCoverFile,
+                                                                  outputCrs))
+  }
+  
   # adding destinations layer
   if (addDestinationLayer) {
+    if (city == "Bendigo") {
+      if (addBendigoData) {
+        localDestinations <- getDestinationsBendigo(bendigoParking,
+                                                    bendigoParkingPoly,
+                                                    bendigoParkingLine,
+                                                    bendigoBikeRacks,
+                                                    osmGpkg,
+                                                    outputCrs)
+      } else {
+        localDestinations <- NULL
+      }
+    } else {
+      localDestinations <- NULL
+    }
+    
     destinations <- addDestinations(networkDensified[[1]],
                                     networkDensified[[2]],
                                     osmGpkg,
@@ -300,17 +402,24 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
                                     gtfs_feed,
                                     outputCrs,
                                     region,
-                                    regionBufferDist)
+                                    regionBufferDist,
+                                    localDestinations,
+                                    maxcores)
+    
+    if (city == "Bendigo") {
+      if (addBendigoData) {
+        destinations <- addPremiumParkTagBendigo(destinations)
+      } 
+    }
   }
 
-  # simplify geometry so all edges are straight lines
-  system.time(networkDirect <-
-                makeEdgesDirect(networkDensified[[1]],
-                                networkDensified[[2]],
-                                outputCrs))
+  # add node details to links
+  system.time(networkWithNodeDetails <-
+                addNodeDetails(networkDensified[[1]],
+                                networkDensified[[2]]))
   
   # add mode to edges, add type to nodes, change cycleway from numbers to text
-  networkRestructured <- restructureData(networkDirect, highway_lookup,
+  networkRestructured <- restructureData(networkWithNodeDetails, highway_lookup,
                                          defaults_df)
   
   # Doubling capacity for small road segments to avoid bottlenecks
@@ -333,36 +442,71 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   # traffic stress and slope may be different in each direction)
   echo("Making all links one way\n")
   networkOneway <- makeEdgesOneway(networkRestructured[[1]], 
-                                   networkRestructured[[2]])
+                                   networkRestructured[[2]],
+                                   defaults_df)
   
   # Adding PT pseudo-network based on GTFS
   # Adjust your analysis date and gtfs feed name above
   if (addGtfs) {
-    # Adjust these parameters based on your GTFS file
-    if (file.exists(region)) {
-      # read in the study region boundary 
-      echo("Using Region file for GTFS processing\n")
-      region.poly <- st_read(region)
-      if (st_crs(region.poly)$epsg != outputCrs) {
-        region.poly <- st_transform(region.poly, outputCrs)
-      }
-      studyRegion <- st_buffer(region.poly, regionBufferDist)  %>%
-        st_snap_to_grid(1)
-    } else {
-      echo("Region file was not found, skipping\n")
-      studyRegion = NA
-    }
     system.time(
       networkOneway[[2]] <- addGtfsLinks(outputLocation = paste0(outputDir,"/pt/"),
                                          nodes = networkOneway[[1]], 
                                          links = networkOneway[[2]],
                                          gtfs_feed,
                                          analysis_date,
-                                         studyRegion,
+                                         region,
+                                         surroundingRegion,
+                                         regionBufferDist,
                                          outputCrs,
                                          onroadBus,
-                                         city)) 
+                                         city,
+                                         maxcores)) 
   }
+  
+  # Adding school time speed zones to links
+  if (addSchoolZones) {
+    networkOneway[[2]] <- addSchoolSpeedZones(networkOneway[[2]],
+                                              schoolZoneFile,
+                                              outputCrs)
+  }
+  
+  # Adding Bendigo 'everyday routes' and 'proposed protected routes' as link attributes
+  if (city == "Bendigo") {
+    if (addBendigoData) {
+      networkOneway[[2]] <- addBendigoEverydayRoutes(networkOneway[[1]],
+                                                     networkOneway[[2]],
+                                                     bendigoEverydayRoutes,
+                                                     bendigoExistingProtected,
+                                                     outputCrs,
+                                                     maxcores)
+      networkOneway[[2]] <- 
+        addBendigoProposedProtected(networkOneway[[1]],
+                                    networkOneway[[2]],
+                                    bendigoProposedProtected,
+                                    defaults_df,
+                                    addNDVI, ndviFile, ndviBuffDist, 
+                                    addTreeCanopyCover, treeCanopyCoverFile,
+                                    addElevation,
+                                    outputCrs,
+                                    maxcores) 
+    }
+  }
+  
+  # Simplify appearance of links to avoid short segments (using
+  # douglas-peucker algorithm) but ensure that endpoints remain unchanged
+  if (simplifyAppearance) {
+    system.time(networkOneway[[2]] <- simplifyLinkAppearance(networkOneway[[2]],
+                                                             dTolerance = 20))
+  }
+
+  # Add LTS (using assumed traffic volumes)
+  # Will be updated once simulated traffic volumes are available
+  # Note 'excludeInadequateLanes' will treat on-road cycle lanes as mixed traffic
+  #   if they are too narrow or shared with parking, but only if OSM 'bike lane 
+  #   project' tags are present
+  networkOneway <- addLTSAssumedTraffic(list(networkOneway[[1]], 
+                                             networkOneway[[2]]),
+                                        excludeInadequateLanes = T)
   
   networkFinal <- networkOneway
   
@@ -384,5 +528,6 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
 }
 
 ## JUST FOR TESTING
-makeNetwork(city = "Bendigo")
-makeNetwork(city = "Melbourne")
+#sink()
+#makeNetwork(city = "Bendigo")
+#makeNetwork(city = "Melbourne")

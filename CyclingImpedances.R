@@ -79,3 +79,5 @@ addImpedances <- function() {
   st_write(networkWeighted[[2]], "./output/test/networkWeighted.sqlite", layer = "links")
   
 }
+
+

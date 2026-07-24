@@ -29,19 +29,23 @@ The city parameters are as follows.
 
 | Parameter          | Parameter type | Requirements                            |
 |--------------------|----------------|-----------------------------------------|
-| region             | .sqlite file   | Required if OSM extract is to be downloaded, or destinations (see below) are to be extracted. This must be the location of a file in sqlite format which defines the boundary of the area for which the OSM extract is required.|
+| region             | .sqlite file   | The location of a file in sqlite format which defines the boundary of the area for which the OSM extract is required, to be used for a fully-detailed road and public transport network and extracted destinations.|
+| surroundingRegion  | .sqlite file   | The location of a file in sqlite format which defines the boundary of a wider area for which the OSM extract is required, to be used for a sparser wide road and public transport network. |
 | outputCrs          | CRS            |Specify the appropriate EPSG coordinate reference system number for the region.|
+| fullExtractLocation | .osm.pbf file | Required if 'extractOsm' and 'useFullExtractHeld' are both set to 'T'.  The location of a file in .osm.pbf file which is already held (instead of downloading the .osm.pbf file) and is to be clipped to the region. |
 | osmGpkg            | .gpkg file     | The location to which an OSM extract in .gpkg format will be saved, or where an existing .gpkg file is stored if already held.|
 | unconfiguredSqlite | .sqlite file   | The location to which an unconfigured network in .sqlite format will be saved, or where an existing unconfigured network is stored if already held.|
 | cropAreaPoly       | area location  | An optional parameter for cropping the OSM extract to a smaller test area. See https://github.com/JamesChevalier/cities/tree/master/australia/victoria for available locations.  |
-| demFile            | .tif file      | Required if 'addElevation' is set to 'T'.  This must be the location of a digital elevation model raster file in the same CRS as the the network.   |
-| ndviFile           | .tif file      | Required if 'addNDVI' is set to 'T'.  This must be the location of a raster file with NDVI values in the same CRS as the network.   |
+| demFile            | .tif file      | Required if 'addElevation' is set to 'T'.  This must be the location of a digital elevation model raster file.   |
+| ndviFile           | .tif file      | Required if 'addNDVI' is set to 'T'.  This must be the location of a raster file with NDVI values.   |
+| treeCanopyCoverageFile | .tif file      | Required if 'addTreeCanopyCoverage' is set to 'T'.  This must be the location of a raster file with values 1 where tree canopy coverage is present and 0 where not.   |
+| schoolZoneFile     | .sqlite file   | Required if 'addSchoolZones' is set to 'T'.  This must be the location of a file containing the location of roads with lower speed limits that apply during school times. |
 | gtfs_feed          | gtfs .zip file | Required if 'addGtfs' or 'addDestinationLayer' is set to 'T'.  This must be the location of a zip file containing GTFS data. |
 
 **The parameters assume that the region file and (if used) the demFile, ndviFile and gtfs_feed are stored in the 'data' subdirectory.**  See `data/README.md` for more detail on obtaining the data files. 
 
 The algorithm will do the following:
-* if 'downloadOsm' is set to 'T', download an OSM extract for the selected 'region' and save it as a .gpkg file.
+* if 'downloadOsm' is set to 'T', download an OSM extract for the selected 'region' (and also including the lines layer for the broader 'surroundingRegion') and save it as a .gpkg file. 
 * if 'networkFromOsm' is set to 'T', process the downloaded OSM extract to an unconfigured network in the form of an .sqlite file with layers of nodes, edges and osm tags ('osm_metadata').
 * simplify the network, producing an output network in .sqlite format (with options to select .shp and .xml formats as well).
 * if 'addDestination' is set to 'T', include a layer of destination points of interest for use in accessibility analysis, such as as supermarkets, doctors and schools, drawn from OSM and GTFS layers.

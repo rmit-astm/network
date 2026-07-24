@@ -3,17 +3,22 @@ addGtfsLinks <- function(outputLocation,
                          links,
                          gtfs_feed, 
                          analysis_date,
-                         studyRegion=NA,
+                         region,
+                         surroundingRegion,
+                         regionBufferDist,
                          outputCrs,
                          onroadBus,
-                         city){
+                         city,
+                         maxcores){
   
   # outputLocation = "./output/generated_network/pt/"
   # nodes = networkOneway[[1]]
   # links = networkOneway[[2]]
   # gtfs_feed = "./data/gtfs.zip"
   # analysis_date = as.Date("2023-11-15","%Y-%m-%d")
-  # studyRegion = st_read(region, quiet=T) %>% st_buffer(regionBufferDist) %>% st_snap_to_grid(1)
+  # region = "./data/greater_bendigo.sqlite"
+  # surroundingRegion = "./data/victoria.sqlite"
+  # regionBufferDist=10000
   # outputCrs = 7899
   # onroadBus = T
   
@@ -36,9 +41,12 @@ addGtfsLinks <- function(outputLocation,
                                networkNodes = validRoadNodes,
                                gtfs_feed,
                                analysis_date,
-                               studyRegion,
+                               region,
+                               surroundingRegion,
+                               regionBufferDist,
                                outputCrs,
-                               onroadBus)
+                               onroadBus,
+                               maxcores)
   
   # unpack the outputs
   stops <- processedGtfs[[1]]
@@ -64,7 +72,8 @@ addGtfsLinks <- function(outputLocation,
     shape.links,
     outputCrs,
     onroadBus,
-    city
+    city,
+    maxcores
   )
   return(edgesCombined)
 }
@@ -75,9 +84,12 @@ processGtfs <- function(outputLocation = "./output/generated_network/pt/",
                         networkNodes,
                         gtfs_feed, 
                         analysis_date,
-                        studyRegion = NA,
+                        region,
+                        surroundingRegion,
+                        regionBufferDist,
                         outputCrs,
-                        onroadBus){
+                        onroadBus,
+                        maxcores){
   
   # outputLocation ="./output/generated_network/pt/"
   # networkNodes = validRoadNodes
@@ -115,7 +127,7 @@ processGtfs <- function(outputLocation = "./output/generated_network/pt/",
     filter(service_type!="null") %>%  # eg skybus
     mutate(route_id=as.factor(route_id)) %>%
     mutate(service_type=as.factor(service_type)) %>%
-    dplyr::select(route_id,service_type)
+    dplyr::select(route_id,service_type,agency_id)
   
   # some trips won't have any valid routes, so they must be removed
   validTrips <- validTrips %>%
@@ -147,13 +159,6 @@ processGtfs <- function(outputLocation = "./output/generated_network/pt/",
     st_transform(outputCrs) %>%
     st_snap_to_grid(1)
   
-  # only want stops within the study region
-  if(!is.na(studyRegion)[1]) {
-    message("Cropping GTFS to study region")
-    validStops <- validStops %>%
-      filter(lengths(st_intersects(., studyRegion)) > 0)
-  }
-  
   # remove any duplicate stop id's (which shouldn't exist); they may have
   # different geometries; just keep the first of any duplicates
   validStops <- validStops %>% group_by(stop_id) %>% slice(1) %>% ungroup()
@@ -166,10 +171,38 @@ processGtfs <- function(outputLocation = "./output/generated_network/pt/",
     left_join(., validTrips %>% dplyr::select(trip_id, route_id) %>% distinct(), 
               by = "trip_id") %>%
     left_join(., validRoutes, by = "route_id") %>%
-    distinct(stop_id, service_type)
+    distinct(stop_id, service_type, agency_id)
   
   validStops <- validStops %>%
     left_join(serviceTable, by = "stop_id")
+  
+  # keep all stops within study area, and Vline &regional coach/bus only in surrounding area
+  # load region and buffer by selected distance (eg 10km)
+  message("Cropping GTFS to study region")
+  region.poly <- st_read(region)
+  if (st_crs(region.poly)$epsg != outputCrs) {
+    region.poly <- st_transform(region.poly, outputCrs)
+  }
+  region.buffer <- st_buffer(region.poly, regionBufferDist) %>%
+    st_snap_to_grid(1)
+  
+  # load surrounding region and buffer by selected distance (eg 10km)
+  surroundingRegion.poly <- st_read(surroundingRegion)
+  if (st_crs(surroundingRegion.poly)$epsg != outputCrs) {
+    surroundingRegion.poly <- st_transform(surroundingRegion.poly, outputCrs)
+  }
+  surroundingRegion.buffer <- st_buffer(surroundingRegion.poly, regionBufferDist) %>%
+    st_snap_to_grid(1)
+  
+  # select only stops within region/surrounding region
+  regionStops <- validStops %>%
+    st_filter(region.buffer, .predicate = st_intersects)
+  surroundingRegionStops <- validStops %>%
+    st_filter(surroundingRegion.buffer, .predicate = st_intersects) %>%
+    filter(agency_id %in% c(1, 5, 6))  # 1 = vline; 5/6 = regional coach/bus
+  validStops <- bind_rows(regionStops, surroundingRegionStops) %>%
+    group_by(stop_id) %>% slice(1) %>% ungroup()
+
 
   if (onroadBus & "shapes" %in% names(gtfs)) {
     
@@ -180,7 +213,6 @@ processGtfs <- function(outputLocation = "./output/generated_network/pt/",
                                             nodes, 
                                             links, 
                                             validRoutes,
-                                            studyRegion,
                                             outputCrs)
     shape.nodes <- shape.subnetwork[[1]]
     shape.links <- shape.subnetwork[[2]]
@@ -191,6 +223,8 @@ processGtfs <- function(outputLocation = "./output/generated_network/pt/",
     # only shape.nodes are used for snapping bus stops
     networkNodesBus <- networkNodes %>%
       filter(id %in% shape.nodes$id)
+    networkLinksBus <- links %>%
+      filter(from_id %in% networkNodesBus$id | to_id %in% networkNodesBus$id)
  
   } else {
     
@@ -200,6 +234,8 @@ processGtfs <- function(outputLocation = "./output/generated_network/pt/",
     
     # all nodes can be used for snapping bus stops
     networkNodesBus <- networkNodes
+    networkLinksBus <- links %>%
+      filter(from_id %in% networkNodesBus$id | to_id %in% networkNodesBus$id)
     shape.links <- NA
   }
   
@@ -211,12 +247,50 @@ processGtfs <- function(outputLocation = "./output/generated_network/pt/",
   serviceTypes <- as.character(c(validStopsBus$service_type, validStopsOther$service_type))
 
   # snapping the stops to the nearest node in the road network
-  nearestNodeIdBus <- st_nearest_feature(validStopsBus, networkNodesBus)
-  nearestNodeIdOther <- st_nearest_feature(validStopsOther, networkNodes)
+  # for bus - nearest valid node on the nearest link
+  # setup for parallel processing and progress reporting
+  cores <- detectCores()
+  if (!is.na(maxcores)) cores <- min(cores, maxcores)
+  cluster <- parallel::makeCluster(cores)
+  doSNOW::registerDoSNOW(cluster)
+  pb <- txtProgressBar(max = max(nrow(validStopsBus), 2), style = 3)
+  progress <- function(n) setTxtProgressBar(pb, n)
+  opts <- list(progress = progress)
+  
+  # report
+  echo(paste("Finding nearest node on nearest link for", nrow(validStopsBus), "bus stops;",
+             "parallel processing with", cores, "cores\n"))
+  
+  # loop to find list of boundary points
+  nearestNodeBus <-
+    foreach(i = 1:nrow(validStopsBus),
+            # foreach(i = 1:10,
+            .combine = rbind,
+            .packages = c("dplyr", "sf"),
+            .options.snow = opts) %dopar% {
+              
+              stop <- validStopsBus[i,]
+              # nearest link (which must contain a NetworkNode) to the stop
+              nearest.link <- networkLinksBus[st_nearest_feature(stop, networkLinksBus), ]
+              # the link's NetworkNodes
+              eligible.nodes <- networkNodesBus %>%
+                filter(id == nearest.link$from_id | id == nearest.link$to_id)
+              # nearest of the link's NetworkNodes to the stop
+              nearest.node <- networkNodesBus %>%
+                filter(id == eligible.nodes$id[st_nearest_feature(stop, eligible.nodes)])
+              
+              return(nearest.node)
+            }
+  
+  # close the progress bar and cluster
+  close(pb)
+  stopCluster(cluster)
 
-  # subsetting the networkNodes and rearranging to match validStops
-  nearestNodeBus <- networkNodesBus[nearestNodeIdBus, ]
+  # otherwise - nearest valid node
+  nearestNodeIdOther <- st_nearest_feature(validStopsOther, networkNodes)
   nearestNodeOther <- networkNodes[nearestNodeIdOther, ]
+  
+  # placing in order to match validStops
   nearestNode <- rbind(nearestNodeBus, nearestNodeOther)
   
   # calculating the distance from each stop to the nearest node in the road network
@@ -250,7 +324,10 @@ processGtfs <- function(outputLocation = "./output/generated_network/pt/",
     filter(id!=lag(id) | row_number()==1) %>%
     mutate(stop_sequence=row_number()) %>%
     ungroup() %>%
-    dplyr::select(trip_id,stop_sequence,arrival_time,departure_time,stop_id,id,x,y,service_type)
+    dplyr::select(trip_id,stop_sequence,arrival_time,departure_time,stop_id,id,x,y,service_type) %>%
+    # add flag for whether stop is in buffered region or not (so that onroadbus 
+    # routing can be used where within region)
+    mutate(region_stop = ifelse(stop_id %in% regionStops$stop_id, 1, 0))
   
   # some trips will no longer be present
   validTripsSnapped <- validTrips %>%
@@ -302,7 +379,8 @@ exportGtfsSchedule <- function(links,
                                shape.links,
                                outputCrs,
                                onroadBus,
-                               city){
+                               city,
+                               maxcores){
   
   # flag for whether buses are routed onroad (requires 'shape.links' to be created in 'processGtfs')
   if (onroadBus & !is.na(shape.links)[1]) {
@@ -337,13 +415,15 @@ exportGtfsSchedule <- function(links,
                                                      trips, 
                                                      routes, 
                                                      shape.links,
-                                                     existingNodePairs = NA))
+                                                     existingNodePairs = NA,
+                                                     maxcores))
     
     system.time(unroutedStopOutputs <- removeUnroutedStops(stopTimes, 
                                                            trips,
                                                            routes,
                                                            shape.links,
-                                                           nodePairRoutes))
+                                                           nodePairRoutes,
+                                                           maxcores))
     stopTimes <- unroutedStopOutputs[[1]]
     nodePairRoutes <- unroutedStopOutputs[[2]]
     
@@ -427,9 +507,9 @@ exportGtfsSchedule <- function(links,
       # link id: service type plus an identifying number
       mutate(link_id = paste0(service_type, "_",
                               formatC(row_number(), digits=0, width=5, flag="0", format="d"))) %>%
-      # update link id for buses: first link in the chain
+      # update link id for buses that have a link chain: first link in the chain
       rowwise() %>%
-      mutate(link_id = if_else(service_type == "bus" & from_id != to_id, 
+      mutate(link_id = if_else(service_type == "bus" & from_id != to_id & !(is.na(link_ids)),
                                unlist(str_split(link_ids, ", "))[1],
                                link_id)) %>%
       ungroup()
@@ -467,18 +547,18 @@ exportGtfsSchedule <- function(links,
   # making tables for XML
   
   # ./data/transitVehicles.xml: vehicle
-  # id is just the trip_id. This means we can potentially have a different vehicle 
+  # id is just the trip_id. This means we can potentially have a different vehicle
   # for each trip. Have also set the vehicle type here.
   vehicles <- vehicleTripMatching %>%
     dplyr::select(id=trip_id,service_type) %>%
     arrange(id,service_type) %>%
     as.data.frame()
-  
+
   # ./data/transitSchedule.xml: transitSchedule > transitStops
   transitStops <- ptNetwork_StopsAndEdges %>%
     st_drop_geometry() %>%
     dplyr::select(stop_id,linkRefId=link_id,x=from_x,y=from_y)
-  
+
   # ./data/transitSchedule.xml: transitSchedule > transitRoute > routeProfile
   # ./data/transitSchedule.xml: transitSchedule > transitRoute > route
   # * trip_id is the transitRoute (i.e., each trip is its own route, with a single
@@ -487,9 +567,9 @@ exportGtfsSchedule <- function(links,
   routeProfile <- ptNetworkRoutes %>%
     dplyr::select(transitRouteId=route_id_new, refId=stop_id,arrivalOffset,
                   departureOffset,linkRefId=link_id, any_of("link_ids"),service_type)
-  
+
   # ./data/transitSchedule.xml: transitSchedule > transitRoute > departures
-  # vehicleRefId is just the trip_id. This means we can potentially have a 
+  # vehicleRefId is just the trip_id. This means we can potentially have a
   # different vehicle for each trip. I have also set the vehicle type here.
   departures <- ptNetworkDepartures %>%
     # mutate(departure_time=as.character(as.hms(departure_time))) %>%
@@ -506,7 +586,7 @@ exportGtfsSchedule <- function(links,
     dplyr::select(transitRouteId=route_id_new,departureId=departure_id,
                   departureTime=departure_time,vehicleRefId,type,serviceType=service_type) %>%
     as.data.frame()
-  
+
   # Types of vehicles to place in the network - TO BE REVIEWED
   vehicleTypes <- tribble(
     ~id, ~service_type, ~seats, ~standingRoom, ~length, ~accessTime, ~egressTime, ~passengerCarEquivalents,
@@ -514,7 +594,7 @@ exportGtfsSchedule <- function(links,
     2  , "bus"        , 25    , 13           , 15     , "0.0"      , "0.0"      , 0.25                    ,
     3  , "tram"       , 16    , 50           , 30     , "0.0"      , "0.0"      , 0.25
   )
-  
+
   echo("writing transitVehicles.xml\n")
   outxml<-paste0(outputLocation,"transitVehicles.xml")
   # transitVehicles
@@ -550,13 +630,13 @@ exportGtfsSchedule <- function(links,
     if (i%%50==0 || i==nrow(departures)) printProgress(i,nrow(departures),' Vehicles')
   }
   cat(paste0("</vehicleDefinitions>\n"),file=outxml,append=TRUE)
-  
-  
-  
+
+
+
   echo("writing transitSchedule.xml\n")
   outxml<-paste0(outputLocation,"transitSchedule.xml")
   str<-""
-  
+
   # transitSchedule
   cat(
     "<?xml version=\"1.0\" ?>
@@ -564,14 +644,14 @@ exportGtfsSchedule <- function(links,
     <transitSchedule>
     <transitStops>\n",
     file=outxml,append=FALSE)
-  
+
   echo("writing transitStops\n")
   for (i in 1:nrow(transitStops)) {
     # for (i in 1:100) {
     str<-paste0(str,
                 "    <stopFacility id=\"",transitStops[i,]$stop_id,"\" isBlocking=\"false\" linkRefId=\"",
                 transitStops[i,]$linkRefId,"\" x=\"",transitStops[i,]$x,"\" y=\"",transitStops[i,]$y,"\"/>\n")
-    
+
     if (i%%writeInterval==0 || i==nrow(transitStops)) {
       cat(str,file=outxml,append=TRUE)
       str<-"" # clear the buffer after writing it out
@@ -581,13 +661,13 @@ exportGtfsSchedule <- function(links,
   }
   cat(paste0("  </transitStops>\n"),file=outxml,append=TRUE)
   cat(paste0("  <transitLine id=\"",city,"\">\n"),file=outxml,append=TRUE)
-  
+
   echo("writing vehicleTripMatching\n")
   str<-""
   writeInterval<-100
-  
+
   transitRoutes<-routeProfile$transitRouteId%>%unique()%>%sort()
-  
+
   for (i in 1:length(transitRoutes)) {
     # for (i in 1:100) {
     routeProfileCurrent <- routeProfile[routeProfile$transitRouteId==transitRoutes[i],]
@@ -597,8 +677,8 @@ exportGtfsSchedule <- function(links,
       str<-paste0(str,"      <description>",departuresCurrent[1,]$type,"</description>\n")
       str<-paste0(str,"      <transportMode>",departuresCurrent[1,]$serviceType,"</transportMode>\n")  ### HERE
       str<-paste0(str,"      <routeProfile>\n")
-      
-      for (j in 1:nrow(routeProfileCurrent)) { 
+
+      for (j in 1:nrow(routeProfileCurrent)) {
         # first row: no arrival offset
         # <stop awaitDeparture="true" departureOffset="departureOffset" refId="refId">
         if (j == 1) str<-paste0(str,"        <stop awaitDeparture=\"true\" departureOffset=\"",
@@ -650,7 +730,7 @@ exportGtfsSchedule <- function(links,
         }
       }
       str<-paste0(str,"      </route>\n")
-      
+
       str<-paste0(str,"      <departures>\n")
       for (k in 1:nrow(departuresCurrent)) {
         str<-paste0(str,"        <departure departureTime=\"",
@@ -660,11 +740,11 @@ exportGtfsSchedule <- function(links,
                     "\" vehicleRefId=\"",
                     departuresCurrent[k,]$vehicleRefId,
                     "\"/>\n")
-      }   
+      }
       str<-paste0(str,"      </departures>\n")
       str<-paste0(str,"    </transitRoute>\n")
     }
-    
+
     if (i%%writeInterval==0 || i==length(transitRoutes)) {
       cat(str,file=outxml,append=TRUE)
       str<-"" # clear the buffer after writing it out
@@ -733,7 +813,6 @@ makeShapeSubnetwork <- function(gtfs,
                                 nodes, 
                                 links, 
                                 validRoutes,
-                                studyRegion = NA,
                                 outputCrs) {
 
   # convert shapes to sf, and filter to bus
@@ -741,12 +820,6 @@ makeShapeSubnetwork <- function(gtfs,
     .$shapes %>% 
     st_transform(outputCrs) %>%
     st_snap_to_grid(1)
-  
-  # limit to study area (note - this crops shapes at edge of study area)
-  if (!is.na(studyRegion)[1]) {
-    shapes <- shapes %>%
-      st_intersection(., studyRegion %>% st_geometry())
-  }
   
   # filter to bus shapes only
   bus.shapes <- shapes %>%
@@ -777,6 +850,7 @@ makeShapeSubnetwork <- function(gtfs,
   
   # make a  graph of the shape links, and remove any small sections (< 10 nodes)
   g <- graph_from_data_frame(shape.links %>%
+                               st_drop_geometry() %>%
                                dplyr::select(from_id, to_id),
                              directed = T)
   components <- components(g)
@@ -802,12 +876,13 @@ makeShapeSubnetwork <- function(gtfs,
 
 
 # function to find route between pairs of nodes representing adjacent stops on 
-# a bus route - only used where onroadBus = T
+# a bus route (where the route is within the region) - only used where onroadBus = T
 findNodePairRoutes <- function(stopTimes, 
                                trips, 
                                routes, 
                                shape.links,
-                               existingNodePairs = NA) {
+                               existingNodePairs = NA,
+                               maxcores) {
   
   nodePairs <- stopTimes %>%
     # filter to bus
@@ -817,7 +892,11 @@ findNodePairRoutes <- function(stopTimes,
                            .$trip_id)) %>%
     # add next stop ID if it's the same trip (note - these 'stop_ids' are node id's not gtfs id's)
     mutate(next_stop_id = ifelse(trip_id == lead(trip_id),
-                                 lead(stop_id), NA)) %>%
+                                 lead(stop_id), NA),
+           next_stop_region = ifelse(trip_id == lead(trip_id),
+                                     lead(region_stop), NA)) %>%
+    # filter to where at least one stop is in region
+    filter(region_stop == 1 | next_stop_region == 1) %>%
     distinct(stop_id, next_stop_id) %>%
     filter(!is.na(next_stop_id)) 
   
@@ -835,12 +914,14 @@ findNodePairRoutes <- function(stopTimes,
     # directed graph of shape nodes and links
     shape.g <- 
       graph_from_data_frame(shape.links %>%
+                              st_drop_geometry() %>%
                               dplyr::select(from_id, to_id, weight = length, link_id),
                             # dplyr::select(from_id, to_id, weight = length/freespeed, link_id), # time rather than length
                             directed = T)
     
     # setup for parallel processing and progress reporting
     cores <- detectCores()
+    if (!is.na(maxcores)) cores <- min(cores, maxcores)
     cluster <- parallel::makeCluster(cores)
     doSNOW::registerDoSNOW(cluster)
     pb <- txtProgressBar(max = max(nrow(nodePairs), 2), style = 3)
@@ -897,7 +978,8 @@ removeUnroutedStops <- function(stopTimes,
                                 trips,
                                 routes,
                                 shape.links,
-                                nodePairRoutes) {
+                                nodePairRoutes,
+                                maxcores) {
   
   # find missing pair routes
   missingPairRoutes <- nodePairRoutes %>% filter(is.na(link_ids))
@@ -946,7 +1028,8 @@ removeUnroutedStops <- function(stopTimes,
                                        trips,
                                        routes,
                                        shape.links,
-                                       existingNodePairs = nodePairRoutes)
+                                       existingNodePairs = nodePairRoutes,
+                                       maxcores)
     
     # add new pairs to output, and recalculate missing pair routes
     nodePairRoutes <- rbind(nodePairRoutes, newNodePairs)

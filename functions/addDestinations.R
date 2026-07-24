@@ -10,7 +10,9 @@ addDestinations <- function(nodes_current,
                             gtfs_feed,
                             outputCrs,
                             region,
-                            regionBufferDist) {
+                            regionBufferDist,
+                            localDestinations,
+                            maxcores) {
    
   # nodes_current = networkDensified[[1]]
   # edges_current = networkDensified[[2]]
@@ -31,9 +33,11 @@ addDestinations <- function(nodes_current,
   extra.tag.string <- "SELECT *, 
                       hstore_get_value(other_tags, 'access') AS access,
                       hstore_get_value(other_tags, 'amenity') AS amenity,
+                      hstore_get_value(other_tags, 'garden:type') AS garden_type,
                       hstore_get_value(other_tags, 'grades') AS grades,
                       hstore_get_value(other_tags, 'healthcare') AS healthcare,
                       hstore_get_value(other_tags, 'isced:level') AS isced_level,
+                      hstore_get_value(other_tags, 'landuse') AS landuse,
                       hstore_get_value(other_tags, 'leisure') AS leisure,
                       hstore_get_value(other_tags, 'parking') AS parking,
                       hstore_get_value(other_tags, 'school') AS school,
@@ -86,33 +90,94 @@ addDestinations <- function(nodes_current,
   # ----------------------------------#
   echo("Finding destinations and their nearby nodes\n")
   
-  # create tables for points and polygons, allocate unique id's (so features 
-  # multiple multiple nodes can be grouped by the id where required),
-  # and store area and location details
+  # create tables for points, polygons and lines (if any), allocate unique id's 
+  # (so features with multiple nodes can be grouped by the id where
+  # required), and store area and location details
+  
+  # note - localDestinations are assumed to be POINT, MULTIPOINT, POLYGON,
+  # MULTIPOLYGON, LINESTRING or MULTILINESTRING (GEOMETRYCOLLECTION is not handled)
+  
+  # Points
   echo("Destination point features\n")
-  destination.pt <- 
+  destination.pt.base <- 
     bind_rows(destination.layer(points),
               
               # add PT stops (from GTFS feed) to point table
               getPTStops(city, gtfs_feed, outputCrs, study.area) %>%
-                mutate(dest_type = "pt_stop")) %>%
+                mutate(dest_type = "pt_stop"))
+  
+  # add in any local destination points
+  if (length(localDestinations) > 0) {
+    local.pt <- localDestinations %>%
+      filter(st_geometry_type(.) == "POINT" |
+               st_geometry_type(.) == "MULTIPOINT") %>%
+      st_set_geometry("geom")
+    
+    if (nrow(local.pt) > 0) {
+      destination.pt.base <- bind_rows(destination.pt.base,
+                                       local.pt)
+    }
+  }
+  
+  destination.pt <- destination.pt.base %>%
     mutate(dest_id = row_number(),
            area_m2 = 0,
            centroid_x = st_coordinates(.)[, 1],
-           centroid_y = st_coordinates(.)[, 2]) %>%
-    st_filter(study.area, .predicate = st_intersects)
+           centroid_y = st_coordinates(.)[, 2])  %>%
+    st_intersection(study.area %>% st_geometry()) %>%
+    filter(!st_is_empty(.))
   
+  
+  # Polygons
   echo("Destination polygon features\n")
-  destination.poly <- 
+  destination.poly.base <- 
     destination.layer(polygons) %>%
-    filter(st_is_valid(geom)) %>%
+    filter(st_is_valid(geom)) 
+  
+  # add in any local destination polygons
+  if (length(localDestinations) > 0) {
+    local.poly <- localDestinations %>%
+      filter(st_geometry_type(.) == "POLYGON" |
+               st_geometry_type(.) == "MULTIPOLYGON") %>%
+      st_set_geometry("geom")
+    
+    if (nrow(local.poly) > 0) {
+      destination.poly.base <- bind_rows(destination.poly.base,
+                                       local.poly)
+    }
+  }
+  
+  destination.poly <- destination.poly.base %>%
     mutate(dest_id = max(destination.pt$dest_id) + row_number(),
            area_m2 = as.numeric(st_area(.)),
            centroid_x = st_coordinates(st_centroid(.))[, 1],
            centroid_y = st_coordinates(st_centroid(.))[, 2]) %>%
-    st_filter(study.area, .predicate = st_intersects)
+    st_intersection(study.area %>% st_geometry()) %>%
+    filter(!st_is_empty(.))
   
 
+  # Lines (local destinations only)
+  if (length(localDestinations) > 0) {
+    echo("Destination line features\n")
+    local.line <- localDestinations %>%
+      filter(st_geometry_type(.) == "LINESTRING" |
+               st_geometry_type(.) == "MULTILINESTRING") %>%
+      st_set_geometry("geom")
+    
+    if (nrow(local.line) > 0) {
+      destination.line <- local.line %>%
+        mutate(dest_id = max(destination.poly$dest_id) + row_number(),
+               area_m2 = 0,
+               centroid_x = st_coordinates(st_centroid(.))[, 1],
+               centroid_y = st_coordinates(st_centroid(.))[, 2]) %>%
+        st_intersection(study.area %>% st_geometry()) %>%
+        filter(!st_is_empty(.))
+    }
+  } else {
+    destination.line <- NULL
+  }
+  
+  
   # # check numbers of each destination type
   # chk <- full_join(destination.poly %>%
   #                    st_drop_geometry() %>%
@@ -123,6 +188,14 @@ addDestinations <- function(nodes_current,
   #                    group_by(dest_type) %>%
   #                    summarise(pt = n()),
   #                  by = "dest_type")
+  # if (!is.null(destination.line)) {
+  #   chk <- full_join(chk,
+  #                    destination.line %>%
+  #                      st_drop_geometry() %>%
+  #                      group_by(dest_type) %>%
+  #                      summarise(line = n()),
+  #                    by = "dest_type")
+  # }
 
   
   # find relevant nodes ----
@@ -146,7 +219,7 @@ addDestinations <- function(nodes_current,
   nodes.car <- nodes_current %>% filter(id %in% links.car$from_id | id %in% links.car$to_id)
   
   # 'small' features
-  dest.small <- bind_rows(destination.pt, destination.poly) %>%
+  dest.small <- bind_rows(destination.pt, destination.poly, destination.line) %>%
     filter(!(dest_type %in% c("park", "primary_school", "secondary_school")))
   # nearest node of each mode
   node_cycle <- nodes.cycle$id[st_nearest_feature(dest.small %>% st_centroid(), nodes.cycle)]
@@ -193,6 +266,7 @@ addDestinations <- function(nodes_current,
   
   # setup for parallel processing and progress reporting
   cores <- detectCores()
+  if (!is.na(maxcores)) cores <- min(cores, maxcores)
   cluster <- parallel::makeCluster(cores)
   doSNOW::registerDoSNOW(cluster)
   pb <- txtProgressBar(max = nrow(dest.large.poly), style = 3)

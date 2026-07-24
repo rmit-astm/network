@@ -1,6 +1,7 @@
 # function to convert OSM .gpkg file into network of nodes and edges
 
-processOsm <- function(osmGpkg, outputCrs) {
+processOsm <- function(osmGpkg, region, regionBufferDist = 10000, 
+                       outputCrs, maxcores) {
   
   # osmGpkg = "./output/bendigo_osm.gpkg"
   # osmGpkg = "./output/melbourne_osm.gpkg"
@@ -16,6 +17,16 @@ processOsm <- function(osmGpkg, outputCrs) {
     st_set_geometry("geom")
   
   
+  # read in and region and buffer by selected distance (eg 10km)
+  # -----------------------------------#
+  region.poly <- st_read(region)
+  if (st_crs(region.poly)$epsg != outputCrs) {
+    region.poly <- st_transform(region.poly, outputCrs)
+  }
+  region.buffer <- st_buffer(region.poly, regionBufferDist) %>%
+    st_snap_to_grid(1)
+  
+
   # paths and intersections
   # -----------------------------------#
 
@@ -38,8 +49,16 @@ processOsm <- function(osmGpkg, outputCrs) {
     # add bridge/tunnel column (0 for neither, 1 for bridge, 2 for tunnel)
     mutate(bridge_tunnel = case_when(str_detect(other_tags, "bridge") ~ 1,
                                       str_detect(other_tags, "tunnel") ~ 2,
-                                      TRUE ~ 0))
+                                      TRUE ~ 0)) 
   
+  # exclude minor roads outside study region
+  excluded.paths <- paths %>%
+    st_filter(region.buffer, .predicate = st_disjoint) %>%
+    filter(!highway %in% c("motorway", "motorway_link", "trunk", "trunk_link",
+                           "primary", "primary_link", "secondary", "secondary_link"))
+  paths <- paths %>%
+    filter(!osm_id %in% excluded.paths$osm_id)
+
   # temp dev notes, comparing to processOSM.sh (SP)
   # (1) I did not remove other_tags LIKE 'busbar'; these are electrical facilities, 
   #     but they are all highway=NA, so are removed anyway 
@@ -50,6 +69,7 @@ processOsm <- function(osmGpkg, outputCrs) {
   # (4) some paths have a 'level' or 'layer' tag that could be used to separate
   #     out different levels; however these are mostly within shopping centres
   #     or multi-storey carparks, and probably aren't of much interest to us
+  # (5) the exclusion of minor roads outside the study area is new
   
   
   # find intersections, but excluding any on different levels as
@@ -110,7 +130,7 @@ processOsm <- function(osmGpkg, outputCrs) {
 
   # split paths at intersections with matching osm_ids
   echo(paste("Splitting", nrow(paths), "paths at intersections\n"))
-  split.path.list <- splitPathsAtPoints(paths, intersections, 0.001, "osm_id")
+  split.path.list <- splitPathsAtPoints(paths, intersections, 0.001, "osm_id", maxcores)
   
   # convert to dataframe, snap to grid, remove empty geometries, add unique id
   echo("Combining the split paths into a single dataframe\n")
@@ -156,47 +176,54 @@ processOsm <- function(osmGpkg, outputCrs) {
     filter(path_id %in% multiple.endpoint.paths$path_id)
   
   
-  # do a second round of splitting: re-split the paths that have adjacent endpoints,
+  # do a second round of splitting, if needed: re-split the paths that have adjacent endpoints,
   # using 0.1 distance this time, but only where adjacent endpoint is an endpoint
   # for a path that has the same bridge_tunnel status as the path to be resplit
-  echo(paste("Re-splitting", nrow(paths.to.resplit), "paths at adjacent endpoints\n"))
+  if (nrow(paths.to.resplit) > 0) {
+    echo(paste("Re-splitting", nrow(paths.to.resplit), "paths at adjacent endpoints\n"))
+    
+    endpoints.for.resplit <- paths.with.nearby.endpoints %>%
+      # just keep paths that need to be resplit, with their bridge_tunnel status
+      filter(path_id %in% paths.to.resplit$path_id) %>%
+      st_drop_geometry() %>%
+      rename(path_bridge_tunnel = bridge_tunnel) %>%
+      # join the endpoint geometries
+      left_join(endpoints, by = "endpoint_id") %>%
+      st_sf()  %>%
+      # join the bridge_tunnel status of each path that intersects the endpoint
+      # (this is the endpoint's bridge_tunnel status, but it could have more than one,
+      # say where a path enters a tunnel)
+      st_join(paths %>% dplyr::select(endpoint_bridge_tunnel = bridge_tunnel), 
+              join = st_intersects) %>%
+      # only keep the endpoints if bridge_tunnel status for the endpoint
+      # matches the bridge_tunnel status of the path to be resplit
+      filter(path_bridge_tunnel == endpoint_bridge_tunnel) %>%
+      distinct()
+    
+    resplit.path.list <- 
+      splitPathsAtPoints(paths.to.resplit, endpoints.for.resplit, 0.1, "path_id", maxcores)
+    
+    # convert to dataframe, snap to grid, remove empty geometries
+    echo("Combining the resplit paths into a single dataframe\n")
+    system.time(
+      resplit.paths <- bind_rows(resplit.path.list) %>% 
+        st_snap_to_grid(1) %>%
+        filter(!st_is_empty(geom))
+    )
+    
+    # remove paths that needed to be resplit, and replace with resplit paths
+    combined.paths <- split.paths %>%
+      filter(!path_id %in% paths.to.resplit$path_id) %>%
+      rbind(resplit.paths) %>%
+      # add a new id field, for joining to from and to id's
+      mutate(combined_path_id = row_number())
+    
+  } else {
+    combined.paths <- split.paths %>%
+      # add a new id field, for joining to from and to id's
+      mutate(combined_path_id = row_number())
+  }
   
-  endpoints.for.resplit <- paths.with.nearby.endpoints %>%
-    # just keep paths that need to be resplit, with their bridge_tunnel status
-    filter(path_id %in% paths.to.resplit$path_id) %>%
-    st_drop_geometry() %>%
-    rename(path_bridge_tunnel = bridge_tunnel) %>%
-    # join the endpoint geometries
-    left_join(endpoints, by = "endpoint_id") %>%
-    st_sf()  %>%
-    # join the bridge_tunnel status of each path that intersects the endpoint
-    # (this is the endpoint's bridge_tunnel status, but it could have more than one,
-    # say where a path enters a tunnel)
-    st_join(paths %>% dplyr::select(endpoint_bridge_tunnel = bridge_tunnel), 
-            join = st_intersects) %>%
-    # only keep the endpoints if bridge_tunnel status for the endpoint
-    # matches the bridge_tunnel status of the path to be resplit
-    filter(path_bridge_tunnel == endpoint_bridge_tunnel) %>%
-    distinct()
-  
-  resplit.path.list <- 
-    splitPathsAtPoints(paths.to.resplit, endpoints.for.resplit, 0.1, "path_id")
-  
-  # convert to dataframe, snap to grid, remove empty geometries
-  echo("Combining the resplit paths into a single dataframe\n")
-  system.time(
-    resplit.paths <- bind_rows(resplit.path.list) %>% 
-      st_snap_to_grid(1) %>%
-      filter(!st_is_empty(geom))
-  )
-  
-  # remove paths that needed to be resplit, and replace with resplit paths
-  combined.paths <- split.paths %>%
-    filter(!path_id %in% paths.to.resplit$path_id) %>%
-    rbind(resplit.paths) %>%
-    # add a new id field, for joining to from and to id's
-    mutate(combined_path_id = row_number())
-
   # temp dev notes (SP): 
   # (1) compared to network.sql, the second round only resplits at adjacent 
   #     endpoints if those adjacent endpoints are on paths with the same 

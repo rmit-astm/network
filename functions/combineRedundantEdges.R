@@ -28,6 +28,7 @@ combineRedundantEdges <- function(nodes_current,edges_current,outputCrs){
                 laneCapacity=round(weighted.mean(laneCapacity,w=permlanes,na.rm=T)),
                 permlanes=sum(permlanes,na.rm=T),
                 is_oneway=max(is_oneway,na.rm=T),cycleway=max(cycleway,na.rm=T),
+                contrabike = max(contrabike, na.rm = T),
                 highway_order=min(highway_order,na.rm=T), # selecting the highest rank
                 # surface=surface[which.max(length[!is.na(surface)])], # Take the max length surface type
                 surface=surface[which.max(length)], # Take the max length surface type
@@ -95,7 +96,7 @@ combineRedundantEdges <- function(nodes_current,edges_current,outputCrs){
       filter(is_oneway==0) %>%
       mutate(osm_id=as.character(osm_id)) %>% 
       dplyr::select(uid,length,osm_id,from_id,to_id,freespeed,permlanes,laneCapacity,
-                    is_oneway,cycleway,highway_order,is_cycle,is_walk,is_car)
+                    is_oneway,cycleway,highway_order,is_cycle,is_walk,is_car,contrabike)
   )
   
   # Grouping undirected edges even if going in opposite directions.
@@ -113,12 +114,16 @@ combineRedundantEdges <- function(nodes_current,edges_current,outputCrs){
   
   
   # Adding the undirected and directed edges, and setting any edges with zero
-  # lanes to one.
+  # lanes to one (if one-way) or two (if two-way)
   edges_all <- bind_rows(
     edges_undirected_merged,
     edges_directed_opposite_merged%>%filter(is_oneway==1)
   ) %>%
-    mutate(permlanes=ifelse(permlanes==0,1,permlanes))
+    mutate(permlanes = case_when(
+      permlanes == 0 & is_oneway == 1 ~ 1,
+      permlanes == 0 & is_oneway == 0 ~ 2,
+      TRUE                            ~ permlanes
+    ))
   
   # Finding the geometry
   edges_geom <- edges_current %>%

@@ -1,7 +1,7 @@
 # function to split paths at points within a given distance of the path, 
 # using matching field (such as osm_id) in both paths and points
 
-splitPathsAtPoints <- function(paths, points, buff.dist, field) {
+splitPathsAtPoints <- function(paths, points, buff.dist, field, maxcores) {
   
   # paths = paths
   # points = intersections
@@ -23,7 +23,8 @@ splitPathsAtPoints <- function(paths, points, buff.dist, field) {
     # run the loop to split paths at points
     split.path.list <- splitPathsAtPointsParallelLoop(paths, 
                                                       buffered.points,
-                                                      field)
+                                                      field,
+                                                      maxcores)
     
   } else {
     
@@ -53,7 +54,8 @@ splitPathsAtPoints <- function(paths, points, buff.dist, field) {
       group.split.path.list <- 
         splitPathsAtPointsParallelLoop(group.paths, 
                                        group.buffered.points,
-                                       field)
+                                       field,
+                                       maxcores)
       
       # temporarily save output
       group.output.name <- paste0("split_path_list_", i)
@@ -82,10 +84,12 @@ splitPathsAtPoints <- function(paths, points, buff.dist, field) {
 
 splitPathsAtPointsParallelLoop <- function(paths, 
                                            buffered.points,
-                                           field) {
+                                           field,
+                                           maxcores) {
   
   # setup for parallel processing - detect no of available cores and create cluster
   cores <- detectCores()
+  if (!is.na(maxcores)) cores <- min(cores, maxcores)
   cluster <- parallel::makeCluster(cores)
   doSNOW::registerDoSNOW(cluster)
   

@@ -5,3 +5,8 @@ packrat/src/
 *.osm
 *.osm.pbf
 .Rproj.user
+.DS_Store
+output/
+data/*.zip
+data/*.tif
+data/*.gpkg
