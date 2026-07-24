@@ -105,10 +105,12 @@ processGtfs <- function(outputLocation = "./output/generated_network/pt/",
   if (length(analysis_date) == 0 || is.na(analysis_date)) {
     analysis_date <- chooseAnalysisDate(gtfs)
     echo(paste0("No analysis_date supplied; using ", analysis_date, " (",
-                tolower(weekdays(analysis_date)), ") chosen from the GTFS calendar\n"))
+                gtfsWeekday(analysis_date), ") chosen from the GTFS calendar\n"))
   }
 
-  analysis_day <- tolower(weekdays(analysis_date))
+  # note: the gtfs calendar's weekday columns are always the English day names,
+  # so derive the day locale-independently rather than with weekdays()
+  analysis_day <- gtfsWeekday(analysis_date)
   
   # if calendar uses integers for dates, convert dates (eg 2023-11-15 to 20231115)
   if (typeof(gtfs$calendar$start_date) == "integer") {

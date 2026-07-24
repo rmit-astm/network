@@ -32,9 +32,8 @@ chooseAnalysisDate <- function(gtfs,
 
   # candidate dates across the whole service window
   candidateDates <- seq(min(start, na.rm = TRUE), max(end, na.rm = TRUE), by = "day")
-  # weekday of each candidate, locale-independent (1 = Monday ... 7 = Sunday)
-  weekdayName <- c("monday", "tuesday", "wednesday", "thursday",
-                   "friday", "saturday", "sunday")[as.integer(format(candidateDates, "%u"))]
+  # weekday of each candidate, matching the calendar's English column names
+  weekdayName <- gtfsWeekday(candidateDates)
 
   # for each preferred weekday in turn, find the date with the most active services
   for (day in preferredWeekdays) {
