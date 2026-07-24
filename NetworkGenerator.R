@@ -146,8 +146,10 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   # GTFS
   # A flag for whether to add a network based on GTFS or not
   addGtfs=T
-  # Select an analysis date, eg a midweek day that's not a public or school holiday
-  analysis_date=as.Date("2023-11-15","%Y-%m-%d")
+  # Select an analysis date, eg a midweek day that's not a public or school
+  # holiday; or set to NA to choose a representative weekday automatically from
+  # the GTFS feed's calendar
+  analysis_date=NA
   onroadBus=T  # whether to route buses on roads (rather than create separate pseudo links)
   
   # PARALLEL PROCESSING

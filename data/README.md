@@ -73,8 +73,9 @@ source("functions/prepareGtfs.R"); library(dplyr)
 prepareGtfs("./data/gtfs_ptv_bundle.zip", "./data/gtfs.zip", folders = 1:6)
 ```
 
-Remember to set `analysis_date` in `NetworkGenerator.R` to a normal midweek day
-within the downloaded feed's calendar window.
+By default `analysis_date` in `NetworkGenerator.R` is `NA`, which selects a
+representative midweek day automatically from the downloaded feed's calendar. Set
+it explicitly if you need the network built for a particular date.
 
 The NDVI files were created from Sentinel 2 data using Google Earth Engine at https://code.earthengine.google.com/.
 

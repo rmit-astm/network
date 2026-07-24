@@ -99,7 +99,15 @@ processGtfs <- function(outputLocation = "./output/generated_network/pt/",
   #dir.create(outputLocation, showWarnings = FALSE)
   
   gtfs <- read_gtfs(gtfs_feed)
-  
+
+  # if no analysis date was supplied (analysis_date = NA), choose a representative
+  # weekday automatically from the feed's calendar, so it need not be hard-coded
+  if (length(analysis_date) == 0 || is.na(analysis_date)) {
+    analysis_date <- chooseAnalysisDate(gtfs)
+    echo(paste0("No analysis_date supplied; using ", analysis_date, " (",
+                tolower(weekdays(analysis_date)), ") chosen from the GTFS calendar\n"))
+  }
+
   analysis_day <- tolower(weekdays(analysis_date))
   
   # if calendar uses integers for dates, convert dates (eg 2023-11-15 to 20231115)
