@@ -32,8 +32,12 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   #   canopy coverage values
   # • schoolZoneFile: if 'addSchoolZones=T', sqlite file containing roads with
   #   school time speed limit zones
-  # •	gtfs_feed: if 'addGtfs=T' or 'addDestinationLayer=T, zip file containing 
+  # •	gtfs_feed: if 'addGtfs=T' or 'addDestinationLayer=T, zip file containing
   #   GTFS data (and, if 'addGtfs=T', also set analysis date in GTFS section)
+  # • gtfsUrl: if 'downloadGtfs=T', location from which the GTFS feed is to be
+  #   downloaded
+  # • gtfsBundle: if 'downloadGtfs=T' and 'gtfsNested=T', location where the
+  #   downloaded bundle is to be stored before being converted to 'gtfs_feed'
 
   if (city == "Bendigo") {
     region = "./data/greater_bendigo.sqlite"
@@ -48,6 +52,8 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
     treeCanopyCoverFile = "./data/TCC_Bendigo_5m.tif" 
     schoolZoneFile = "./data/school_zones_March_2024.sqlite"
     gtfs_feed = "./data/gtfs.zip"
+    gtfsUrl = "https://data.ptv.vic.gov.au/downloads/gtfs.zip"
+    gtfsBundle = "./data/gtfs_ptv_bundle.zip"
     # city-specific data
     addBendigoData = T
     bendigoParking = "./data/CoGB_Parking_GIS_Layers_GDA2020Z55_20240222.zip"
@@ -71,6 +77,8 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
     treeCanopyCoverFile = "./data/TCC_Melbourne_5m.tif"  
     schoolZoneFile = "./data/school_zones_March_2024.sqlite"
     gtfs_feed = "./data/gtfs.zip"
+    gtfsUrl = "https://data.ptv.vic.gov.au/downloads/gtfs.zip"
+    gtfsBundle = "./data/gtfs_ptv_bundle.zip"
 
   } else {
     echo(paste("City parameters for", city, "have not been set; unable to proceed\n"))
@@ -146,6 +154,15 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   # GTFS
   # A flag for whether to add a network based on GTFS or not
   addGtfs=T
+  # A flag for whether to download the GTFS feed (if not, must already have a
+  # feed in flat format, that is with 'stops.txt' etc at the top level, at
+  # 'gtfs_feed'); only used if 'addGtfs=T' or 'addDestinationLayer=T'
+  downloadGtfs=T
+  # A flag for whether the downloaded feed is a nested bundle holding a separate
+  # feed for each mode (as PTV's is) and so must be converted to a flat feed
+  gtfsNested=T
+  gtfsFolders=1:6  # if 'gtfsNested=T', the mode folders to include (PTV: see prepareGtfs.R)
+  retainGtfsDownload=T  # Whether to retain downloaded bundle after feed converted
   # Select an analysis date, eg a midweek day that's not a public or school
   # holiday; or set to NA to choose a representative weekday automatically from
   # the GTFS feed's calendar
@@ -212,6 +229,7 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   echo(paste0("- Adding NDVI:                                    ", addNDVI,"\n"))
   echo(paste0("- Adding Tree Canopy Cover Percentage:            ", addTreeCanopyCover,"\n"))
   echo(paste0("- Adding school time speed limit zones:           ", addSchoolZones, "\n"))
+  echo(paste0("- Downloading GTFS feed:                          ", downloadGtfs,"\n"))
   echo(paste0("- Adding PT from GTFS:                            ", addGtfs,"\n"))
   echo(paste0("- Writing outputs in SQLite format:               ", writeSqlite,"\n"))
   echo(paste0("- Writing outputs in ShapeFile format:            ", writeShp,"\n"))
@@ -223,11 +241,17 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   # Extracting OSM
   if (extractOsm) {
     echo(paste0("Extracting OSM for ", city, "\n"))
-    getOsmExtract(region, surroundingRegion, outputCrs, 
+    getOsmExtract(region, surroundingRegion, outputCrs,
                   regionBufferDist, osmGpkg, retainDownload,
                   useFullExtractHeld, fullExtractLocation)
   }
-  
+
+  # Downloading GTFS feed (used for the PT network and for PT stop destinations)
+  if (downloadGtfs & (addGtfs | addDestinationLayer)) {
+    getGtfsFeed(gtfsUrl, gtfsBundle, gtfs_feed, gtfsNested, gtfsFolders,
+                retainGtfsDownload)
+  }
+
   # Processing OSM, or loading existing layers if not required
   if(networkFromOsm) {
     echo(paste0("Starting to process osm extract file, ", osmGpkg, "\n"))
