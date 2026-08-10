@@ -1,17 +1,23 @@
 # function to convert a raw PTV GTFS bundle into a single flat GTFS feed
 #
 # PTV distributes its GTFS as a nested bundle: the outer zip contains numbered
-# folders (1..N), each holding a 'google_transit.zip' for one transport mode:
+# folders, each holding a 'google_transit.zip' for one transport mode:
 #   1 = Regional Train, 2 = Metropolitan Train, 3 = Metropolitan Tram,
-#   4 = Metropolitan Bus, 5 = Regional Coach, 6 = Regional Bus (others skipped)
+#   4 = Myki Bus, 5 = Regional Coach, 6 = Regional Bus,
+#   10 = Interstate, 11 = SkyBus
 #
-# The downstream pipeline (gtfs2PtNetwork.R) reads a single flat feed and
-# classifies modes by 'agency_id' using exactly those folder numbers
-# (agency_id 1,2 = train; 3 = tram; 4,5,6 = bus). Current PTV feeds set every
-# sub-feed's agency_id to "1", so this function overwrites agency_id with the
-# folder number and namespaces the ids of each sub-feed (to avoid collisions)
-# before merging them into one feed. Without this, trams and buses would be
-# silently dropped by the mode classification.
+# The downstream pipeline (gtfs2PtNetwork.R) reads a single flat feed, so this
+# function merges the sub-feeds into one, namespacing their ids with the folder
+# number to avoid collisions between feeds. It also:
+# - sets each sub-feed's agency_id to its folder number: the feeds all use the
+#   same agency_id, but gtfs2PtNetwork.R uses these numbers to identify regional
+#   services when a wider 'surroundingRegion' is used; and
+# - normalizes 'extended' route types to basic ones, since modes are classified
+#   from route_type.
+#
+# The 'folders' argument controls which modes are included. It defaults to 1:6,
+# which excludes interstate services and SkyBus (as the pipeline has always
+# done); include 10 and/or 11 if those services are wanted.
 
 # map GTFS 'extended route types' (eg PTV's 400 urban rail, 204 regional coach,
 # 701 bus) back to the basic types the downstream classification expects
@@ -106,6 +112,18 @@ prepareGtfs <- function(inputBundle,
   # one agency row per agency_id
   if (!is.null(merged$agency)) {
     merged$agency <- dplyr::distinct(merged$agency, agency_id, .keep_all = TRUE)
+  }
+
+  # drop duplicate ids that would make the feed invalid (some source feeds
+  # contain a small number of duplicate trips or stop_times)
+  if (!is.null(merged$trips)) {
+    merged$trips <- dplyr::distinct(merged$trips, trip_id, .keep_all = TRUE)
+  }
+  if (!is.null(merged$stop_times)) {
+    merged$stop_times <- dplyr::distinct(merged$stop_times, trip_id, stop_sequence, .keep_all = TRUE)
+  }
+  if (!is.null(merged$stops)) {
+    merged$stops <- dplyr::distinct(merged$stops, stop_id, .keep_all = TRUE)
   }
 
   message("Writing flat merged feed: ", outputZip)

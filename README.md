@@ -40,13 +40,16 @@ The city parameters are as follows.
 | ndviFile           | .tif file      | Required if 'addNDVI' is set to 'T'.  This must be the location of a raster file with NDVI values.   |
 | treeCanopyCoverageFile | .tif file      | Required if 'addTreeCanopyCoverage' is set to 'T'.  This must be the location of a raster file with values 1 where tree canopy coverage is present and 0 where not.   |
 | schoolZoneFile     | .sqlite file   | Required if 'addSchoolZones' is set to 'T'.  This must be the location of a file containing the location of roads with lower speed limits that apply during school times. |
-| gtfs_feed          | gtfs .zip file | Required if 'addGtfs' or 'addDestinationLayer' is set to 'T'.  This must be the location of a zip file containing GTFS data. |
+| gtfs_feed          | gtfs .zip file | Required if 'addGtfs' or 'addDestinationLayer' is set to 'T'.  This must be the location of a zip file containing GTFS data in flat format (that is, with 'stops.txt' etc at the top level); it is the location to which the feed will be saved if 'downloadGtfs' is set to 'T', or where an existing feed is stored if not. |
+| gtfsUrl            | URL            | Required if 'downloadGtfs' is set to 'T'.  The location from which the GTFS feed is to be downloaded. |
+| gtfsBundle         | .zip file      | Required if 'downloadGtfs' and 'gtfsNested' are both set to 'T'.  The location to which the downloaded bundle will be saved before being converted to a flat feed. |
 
 **The parameters assume that the region file and (if used) the demFile, ndviFile and gtfs_feed are stored in the 'data' subdirectory.**  See `data/README.md` for more detail on obtaining the data files. 
 
 The algorithm will do the following:
 * if 'downloadOsm' is set to 'T', download an OSM extract for the selected 'region' (and also including the lines layer for the broader 'surroundingRegion') and save it as a .gpkg file. 
 * if 'networkFromOsm' is set to 'T', process the downloaded OSM extract to an unconfigured network in the form of an .sqlite file with layers of nodes, edges and osm tags ('osm_metadata').
+* if 'downloadGtfs' is set to 'T' (and public transport or destinations are required), download the GTFS feed from 'gtfsUrl' and, if 'gtfsNested' is set to 'T', convert the downloaded bundle to a single flat feed.
 * simplify the network, producing an output network in .sqlite format (with options to select .shp and .xml formats as well).
 * if 'addDestination' is set to 'T', include a layer of destination points of interest for use in accessibility analysis, such as as supermarkets, doctors and schools, drawn from OSM and GTFS layers.
 
@@ -55,6 +58,17 @@ To run the network generation algorithm from the terminal, you need to run somet
 Rscript -e 'source("NetworkGenerator.R"); makeNetwork(, "Melbourne", "example")'
 
 ```
+
+## Using the pipeline for other cities
+
+The pipeline was developed and tested for Melbourne and Bendigo (Victoria, Australia), but is intended to work for other cities that have OpenStreetMap coverage and a GTFS feed. To build a network for another city, add a new 'city' block in `NetworkGenerator.R` using the existing ones as a template, and check the following. Users outside Australia should pay particular attention to the same points.
+
+* **Coordinate system**: set `outputCrs` to a projected EPSG code suitable for the city (a metre-based local projection, not lat/long).
+* **Region boundaries**: supply `region` (and `surroundingRegion`) boundary files for the city. If a wider surrounding region is not required, set `surroundingRegion` to the same file as `region`.
+* **OpenStreetMap**: network quality depends on local OSM completeness, which varies between cities.
+* **GTFS packaging**: the pipeline expects `gtfs_feed` to be a single flat GTFS zip (with `stops.txt`, `routes.txt` etc. at the top level). Set `gtfsUrl` to the city's own feed location. Some agencies (eg PTV in Victoria) instead distribute a nested bundle holding a separate feed for each mode: for those, leave `gtfsNested` as 'T' and set `gtfsFolders` to the mode folders required; for an ordinary flat feed, set `gtfsNested` to 'F' (see `data/README.md`).
+* **GTFS route types**: public transport modes are classified from the standard GTFS `route_type` codes (see `getPTStops.R` and `gtfs2PtNetwork.R`). Feeds that use non-standard or 'extended' route type codes need to be converted first, or the codes in those two functions adjusted.
+* **Regional service filter**: where `surroundingRegion` differs from `region`, `gtfs2PtNetwork.R` keeps only regional services in the wider area, using agency ids specific to the PTV feed (1 = V/Line, 5, 6 = regional coach/bus). For other feeds, either set `surroundingRegion` to the same file as `region`, or edit these ids.
 
 ## Troubleshooting
 ### Installing sf

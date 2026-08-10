@@ -58,23 +58,29 @@ Those scripts may also be useful to generate similar data input files for other 
 The pipeline reads `gtfs.zip` as a single flat GTFS feed (with `stops.txt`,
 `routes.txt` etc. at the top level). The current PTV feed, downloaded from
 https://data.ptv.vic.gov.au/downloads/gtfs.zip, is instead a **nested bundle**:
-the outer zip contains numbered folders (1..N), each holding a `google_transit.zip`
-for one mode (1 = Regional Train, 2 = Metro Train, 3 = Metro Tram, 4 = Metro Bus,
-5 = Regional Coach, 6 = Regional Bus). It also uses "extended" route types and
-sets every sub-feed's `agency_id` to the same value.
+the outer zip contains numbered folders, each holding a `google_transit.zip` for
+one mode (1 = Regional Train, 2 = Metropolitan Train, 3 = Metropolitan Tram,
+4 = Myki Bus, 5 = Regional Coach, 6 = Regional Bus, 10 = Interstate,
+11 = SkyBus). It also uses "extended" route types and sets every sub-feed's
+`agency_id` to the same value.
 
-Use `functions/prepareGtfs.R` to convert the raw PTV bundle into the flat feed the
-pipeline expects. It merges folders 1–6 into one feed, sets each sub-feed's
-`agency_id` to its folder number (which the mode classification relies on) and
-normalizes extended route types to the basic types:
+Where `downloadGtfs` is set to `T` in `NetworkGenerator.R`, this is all handled
+automatically: the feed is downloaded from `gtfsUrl` and, because `gtfsNested` is
+`T` for the PTV feed, converted to a flat feed with `functions/prepareGtfs.R`. That
+merges the mode folders given by `gtfsFolders` (by default 1–6, which excludes
+interstate services and SkyBus) into one feed, sets each sub-feed's `agency_id` to
+its folder number and normalizes extended route types to the basic types.
+
+To prepare a feed manually instead, run:
 
 ```r
 source("functions/prepareGtfs.R"); library(dplyr)
 prepareGtfs("./data/gtfs_ptv_bundle.zip", "./data/gtfs.zip", folders = 1:6)
 ```
 
-Remember to set `analysis_date` in `NetworkGenerator.R` to a normal midweek day
-within the downloaded feed's calendar window.
+By default `analysis_date` in `NetworkGenerator.R` is `NA`, which selects a
+representative midweek day automatically from the downloaded feed's calendar. Set
+it explicitly if you need the network built for a particular date.
 
 The NDVI files were created from Sentinel 2 data using Google Earth Engine at https://code.earthengine.google.com/.
 
