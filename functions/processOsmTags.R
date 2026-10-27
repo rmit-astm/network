@@ -79,9 +79,13 @@ processOsmTags <- function(osm_df, this_defaults_df, simplifyEdges){
       if(df$cycleway[1]>0 | any(bicycle_tags %in% c("yes","designated"))) df$is_cycle[1]=1
       if(any(bicycle_tags %in% "no")) df$is_cycle[1]=0
       
-      if ("lanes" %in% keys) {
+      # a 'lanes' tag that is zero or not a whole number (eg 'lanes=0', or
+      # 'lanes=2;3') is treated as missing, so the default number is used
+      taggedLanes = if ("lanes" %in% keys) {
+        suppressWarnings(as.integer(values[which(keys == "lanes")][1]))
+      } else NA
+      if (!is.na(taggedLanes) && taggedLanes > 0) {
         # lanes is number of tagged lanes
-        taggedLanes = as.integer(values[which(keys == "lanes")])
         df$permlanes[1] = taggedLanes
       } else {
         # lanes is default number, multiplied by 2 if two-way
