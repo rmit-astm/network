@@ -1,7 +1,8 @@
 makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   # city = "Bendigo"
   # city = "Melbourne"
-  
+  # city = "Victoria"
+
   # outputSubdirectory = "generated_network"
   
   # Parameters --------------------------------------------------------------
@@ -75,6 +76,22 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
     demFile = "./data/dem_melbourne.tif"
     ndviFile = "./data/NDVI_Melbourne_2023.tif"
     treeCanopyCoverFile = "./data/TCC_Melbourne_5m.tif"  
+    schoolZoneFile = "./data/school_zones_March_2024.sqlite"
+    gtfs_feed = "./data/gtfs.zip"
+    gtfsUrl = "https://data.ptv.vic.gov.au/downloads/gtfs.zip"
+    gtfsBundle = "./data/gtfs_ptv_bundle.zip"
+
+  } else if (city == "Victoria") {
+    region = "./data/victoria.sqlite"
+    surroundingRegion = "./data/victoria.sqlite"
+    outputCrs = 7899
+    fullExtractLocation = "./data/geofabrik_australia-latest.osm.pbf"
+    osmGpkg = "./output/victoria_osm.gpkg"
+    unconfiguredSqlite = "./output/victoria_network_unconfigured.sqlite"
+    cropAreaPoly = ""  # must set 'crop2Area=F'
+    demFile = "./data/dem_victoria.tif"
+    ndviFile = ""  # no statewide NDVI file; must set 'addNDVI=F'
+    treeCanopyCoverFile = ""  # no statewide tree canopy file; must set 'addTreeCanopyCover=F'
     schoolZoneFile = "./data/school_zones_March_2024.sqlite"
     gtfs_feed = "./data/gtfs.zip"
     gtfsUrl = "https://data.ptv.vic.gov.au/downloads/gtfs.zip"
@@ -557,3 +574,4 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
 #sink()
 #makeNetwork(city = "Bendigo")
 #makeNetwork(city = "Melbourne")
+#makeNetwork(city = "Victoria")

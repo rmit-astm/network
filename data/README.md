@@ -30,6 +30,18 @@ Download the following files (as required) for the relevant network location.
 | gtfs.zip                 | GTFS feed for Victoria (see 'GTFS feed' section below) |
 
 
+### Victoria
+| File                     | Description                                       |
+|--------------------------|---------------------------------------------------|
+| victoria.sqlite          | Boundary of Victoria                              |
+| dem_victoria.tif         | Digital elevation model data for Victoria (see `data prep tools.R`) |
+| school_zones_March_2024.sqlite | School zone locations for Victoria          |
+| gtfs.zip                 | GTFS feed for Victoria (see 'GTFS feed' section below) |
+
+No statewide NDVI or tree canopy cover files are held, so set `addNDVI=F` and
+`addTreeCanopyCover=F` for a Victoria network.
+
+
 ## Other files
 
 The directory also contains the following other files, from which the region boundary files above were created.
