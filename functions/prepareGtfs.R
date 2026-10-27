@@ -102,8 +102,23 @@ prepareGtfs <- function(inputBundle,
     nRoutes <- if (is.null(g$routes)) 0 else nrow(g$routes)
     message("  folder ", n, ": merged (", nRoutes, " routes)")
     for (tbl in names(g)) {
-      merged[[tbl]] <- if (is.null(merged[[tbl]])) g[[tbl]] else
-        dplyr::bind_rows(merged[[tbl]], g[[tbl]])
+      # Only merge in tables that aren't null, and aren't empty.
+      # Empty tables will not have the correct variable type and cause the merge to fail.
+      if(!is.null(g[[tbl]])) {
+        if(nrow(g[[tbl]])>0) {
+          tbl_current <- g[[tbl]] %>%
+            # If any of the GTFS feeds have been edited manually, they may end up being imported with
+            # inconsistent variable types
+            mutate(across(any_of(c("monday","tuesday","wednesday","thursday","friday","saturday","sunday",
+                                   "start_date","end_date","shape_pt_sequence","location_type",
+                                   "wheelchair_boarding","stop_sequence","pickup_type","drop_off_type",
+                                   "direction_id","wheelchair_accessible","bikes_allowed","date",
+                                   "exception_type")), ~ as.integer(.x))) %>%
+            mutate(across(any_of(c("shape_pt_lat","shape_pt_lon","shape_dist_traveled","stop_lat","stop_lon")),
+                          ~ as.numeric(.x)))
+          merged[[tbl]] <- dplyr::bind_rows(merged[[tbl]], tbl_current)
+        }
+      }
     }
   }
 
