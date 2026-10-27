@@ -1,6 +1,6 @@
 # choose a representative analysis date automatically from a GTFS feed's calendar
 #
-# Used when 'analysis_date' is not set (left as NA) in NetworkGenerator.R, so the
+# Used when 'analysis_date' is not set (left as null) in the config file, so the
 # date does not have to be hard-coded and kept up to date with the feed. Picks the
 # weekday (preferring midweek) within the feed's service window that has the most
 # active weekly services, so the chosen date is valid for the feed and reflects a
@@ -18,7 +18,7 @@ chooseAnalysisDate <- function(gtfs,
 
   cal <- gtfs$calendar
   if (is.null(cal) || nrow(cal) == 0) {
-    stop("Unable to choose an analysis date: the GTFS feed has no 'calendar' table. Set 'analysis_date' explicitly in NetworkGenerator.R.")
+    stop("Unable to choose an analysis date: the GTFS feed has no 'calendar' table. Set 'analysis_date' explicitly in the config file.")
   }
 
   # normalise start/end dates to Date (feeds store them as yyyymmdd integers,
@@ -50,5 +50,5 @@ chooseAnalysisDate <- function(gtfs,
     }
   }
 
-  stop("Unable to choose an analysis date from the GTFS calendar; set 'analysis_date' explicitly in NetworkGenerator.R.")
+  stop("Unable to choose an analysis date from the GTFS calendar; set 'analysis_date' explicitly in the config file.")
 }

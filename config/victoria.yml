@@ -1,0 +1,18 @@
+# Whole of Victoria: merged over 'config/default.yml'
+city: Victoria
+
+region:
+  region: ./data/victoria.sqlite
+  surroundingRegion: ./data/victoria.sqlite
+
+osm:
+  osmGpkg: ./output/victoria_osm.gpkg
+  unconfiguredSqlite: ./output/victoria_network_unconfigured.sqlite
+
+elevation:
+  # made from the statewide Vicmap DEM with 'data/data prep tools.R'
+  demFile: ./data/dem_victoria.tif
+
+treeCanopyCover:
+  # no statewide tree canopy cover file is held
+  addTreeCanopyCover: false

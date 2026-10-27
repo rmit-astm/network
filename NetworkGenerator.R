@@ -1,206 +1,19 @@
-makeNetwork<-function(city, outputSubdirectory = "generated_network"){
-  # city = "Bendigo"
-  # city = "Melbourne"
-  # city = "Victoria"
+makeNetwork<-function(configFile, overrides = list()){
+  # configFile = "./config/melbourne.yml"
+  # configFile = "./config/bendigo.yml"
+  # configFile = "./config/victoria.yml"
+  # overrides = list(extractOsm = FALSE, networkFromOsm = FALSE)
 
-  # outputSubdirectory = "generated_network"
-  
   # Parameters --------------------------------------------------------------
-  
-  # CITY PARAMETERS
-  # City parameters to be set
-  # •	region: sqlite file defining boundary of the area for which the OSM 
-  #   extract is required, to be used for fully-detailed road and public 
-  #   transport network and extracted destinations
-  # •	surroundingRegion: sqlite file defining boundary of a wider area for 
-  #   which the OSM extract is required (eg state), to be used for sparser wide 
-  #   road and public transport network (if not required, then make this the 
-  #   same as 'region')
-  # •	outputCrs: desired coordinate system for network
-  # •	fullExtractLocation: if 'extractOsm=T' and 'useFullExtractHeld=T', location 
-  #   where an .osm.pbf file is already held which is to be clipped and converted
-  #   to a .gpkg file for the region
-  # •	osmGpkg: location where downloaded OSM extract for region is to be stored
-  #   (if 'extractOsm=T') and/or read from (if 'processOsm=T')
-  # •	unconfiguredSqlite: location where processed OSM file is to be stored
-  #   (if 'networkFromOsm=T') or read from (if 'networkFromOsm=F')
-  # •	cropAreaPoly: if 'crop2TestArea=T' cropArea location from 
-  #   https://github.com/JamesChevalier/cities/tree/master/australia/victoria 
-  #   (only supported for Victoria at this stage)
-  # •	demFile: if 'addElevation=T', digital elevation model raster file
-  # •	ndviFile: if 'addNDVI=T', raster file with NDVI values
-  # • treeCanopyCoverFile: if 'addTreeCanopyCover=T', raster file with tree
-  #   canopy coverage values
-  # • schoolZoneFile: if 'addSchoolZones=T', sqlite file containing roads with
-  #   school time speed limit zones
-  # •	gtfs_feed: if 'addGtfs=T' or 'addDestinationLayer=T, zip file containing
-  #   GTFS data (and, if 'addGtfs=T', also set analysis date in GTFS section)
-  # • gtfsUrl: if 'downloadGtfs=T', location from which the GTFS feed is to be
-  #   downloaded
-  # • gtfsBundle: if 'downloadGtfs=T' and 'gtfsNested=T', location where the
-  #   downloaded bundle is to be stored before being converted to 'gtfs_feed'
 
-  if (city == "Bendigo") {
-    region = "./data/greater_bendigo.sqlite"
-    surroundingRegion = "./data/victoria.sqlite"
-    outputCrs = 7899
-    fullExtractLocation = "./data/geofabrik_australia-latest.osm.pbf"
-    osmGpkg = "./output/bendigo_osm.gpkg"
-    unconfiguredSqlite = "./output/bendigo_network_unconfigured.sqlite"
-    cropAreaPoly = ""  # must set 'crop2Area=F'
-    demFile = "./data/dem_bendigo.tif" 
-    ndviFile = "./data/NDVI_Bendigo_2023.tif" 
-    treeCanopyCoverFile = "./data/TCC_Bendigo_5m.tif" 
-    schoolZoneFile = "./data/school_zones_March_2024.sqlite"
-    gtfs_feed = "./data/gtfs.zip"
-    gtfsUrl = "https://data.ptv.vic.gov.au/downloads/gtfs.zip"
-    gtfsBundle = "./data/gtfs_ptv_bundle.zip"
-    # city-specific data
-    addBendigoData = T
-    bendigoParking = "./data/CoGB_Parking_GIS_Layers_GDA2020Z55_20240222.zip"
-    bendigoParkingPoly = "/CoGB_Parking_Polygons_GDA2020Z55_20240222.shp"
-    bendigoParkingLine = "/CoGB_Parking_Lines_GDA2020Z55_20240222.shp"
-    bendigoBikeRacks = "./data/Bike Racks_v1.2.csv"
-    bendigoEverydayRoutes = "./data/cogb-cycling-everyday-rides.shz"
-    bendigoExistingProtected = "./data/cogb_existing_protected_network.sqlite"
-    bendigoProposedProtected = "./data/cogb_proposed_protected_network.sqlite"
-
-  } else if (city == "Melbourne") {
-    region = "./data/greater_melbourne.sqlite"
-    surroundingRegion = "./data/victoria.sqlite"
-    outputCrs = 7899
-    fullExtractLocation = "./data/geofabrik_australia-latest.osm.pbf"
-    osmGpkg = "./output/melbourne_osm.gpkg"
-    unconfiguredSqlite = "./output/melbourne_network_unconfigured.sqlite"
-    cropAreaPoly = "city-of-melbourne_victoria"
-    demFile = "./data/dem_melbourne.tif"
-    ndviFile = "./data/NDVI_Melbourne_2023.tif"
-    treeCanopyCoverFile = "./data/TCC_Melbourne_5m.tif"  
-    schoolZoneFile = "./data/school_zones_March_2024.sqlite"
-    gtfs_feed = "./data/gtfs.zip"
-    gtfsUrl = "https://data.ptv.vic.gov.au/downloads/gtfs.zip"
-    gtfsBundle = "./data/gtfs_ptv_bundle.zip"
-
-  } else if (city == "Victoria") {
-    region = "./data/victoria.sqlite"
-    surroundingRegion = "./data/victoria.sqlite"
-    outputCrs = 7899
-    fullExtractLocation = "./data/geofabrik_australia-latest.osm.pbf"
-    osmGpkg = "./output/victoria_osm.gpkg"
-    unconfiguredSqlite = "./output/victoria_network_unconfigured.sqlite"
-    cropAreaPoly = ""  # must set 'crop2Area=F'
-    demFile = "./data/dem_victoria.tif"
-    ndviFile = ""  # no statewide NDVI file; must set 'addNDVI=F'
-    treeCanopyCoverFile = ""  # no statewide tree canopy file; must set 'addTreeCanopyCover=F'
-    schoolZoneFile = "./data/school_zones_March_2024.sqlite"
-    gtfs_feed = "./data/gtfs.zip"
-    gtfsUrl = "https://data.ptv.vic.gov.au/downloads/gtfs.zip"
-    gtfsBundle = "./data/gtfs_ptv_bundle.zip"
-
-  } else {
-    echo(paste("City parameters for", city, "have not been set; unable to proceed\n"))
-    return()
-  }
-
-  # REGION BUFFER DISTANCE
-  # Distance to buffer region when getting osm extract, destinations or gtfs routes
-  regionBufferDist=10000
-  
-  # EXTRACT OSM for REGION
-  # A flag for whether to make an OSM extract for the region, either by downloading
-  # an extract in .osm.pbf format and clipping it to the region, or by clipping
-  # an existing extract in .osm.pbf format (if not, and if network needs to be 
-  # processed, then must already have osmGpkg file)
-  extractOsm=T
-  useFullExtractHeld=F  # Whether to use an existing OSM extract, instead of downloading
-  retainDownload=T  # Whether to retain downloaded file after region extracted
-  
-  # NETWORK FROM OSM 
-  # A flag for whether to build unconfigured network from osm extract (if not,
-  # must already have unconfigured sqlite)
-  networkFromOsm=T
-  saveUnconfigured=T
-
-  # SIMPLIFICATION
-  # A flag for whether to simplify edges by combining edges between the same 
-  # nodes, simplifying chains of edges, and removing dangles (note: if T, then
-  # 'bike lane project' tags will not be collected when processing OSM tags,
-  # as the simplification functions are not configured for them)
-  simplifyEdges=F
-  shortLinkLength=20
-  minDangleLinkLengh=500
-  crop2Area=F
-  
-  # LINK APPEARANCE SIMPLIFICATION
-  # A flag for whether to simplify the appearance of links while keeping
-  # start and end points unchanged
-  simplifyAppearance=F
-
-  # DENSIFICATION
-  densificationMaxLength=500
-  densifyBikeways=T
-
-  # CAPACITY ADJUSTMENT
-  # A flag for whether to multiply capacity of links shorter than 100m by 2 or not
-  # In some cases such as when building network for simulation of small samples (e.g. <1%) it might be desired
-  adjustCapacity=F
-
-  # ELEVATION
-  # A flag for whether to add elevation or not
-  addElevation=T
-  ElevationMultiplier=1
-  
-  # DESTINATIONS
-  # A flag for whether to add a destinations layer (drawn from OSM, and GTFS for PT) or not
-  addDestinationLayer=T
-
-  # NDVI
-  # A flag for whether to add NDVI or not
-  addNDVI=F
-  # Buffer distance for finding average NDVI for links
-  ndviBuffDist=30
-
-  # TREE CANOPY COVER
-  # A flag for whether to add tree canopy cover or not
-  addTreeCanopyCover=T
-  
-  # SCHOOL ZONES
-  # A flag for whether to add school time speed limit zones or not
-  addSchoolZones=T
-  
-  # GTFS
-  # A flag for whether to add a network based on GTFS or not
-  addGtfs=T
-  # A flag for whether to download the GTFS feed (if not, must already have a
-  # feed in flat format, that is with 'stops.txt' etc at the top level, at
-  # 'gtfs_feed'); only used if 'addGtfs=T' or 'addDestinationLayer=T'
-  downloadGtfs=T
-  # A flag for whether the downloaded feed is a nested bundle holding a separate
-  # feed for each mode (as PTV's is) and so must be converted to a flat feed
-  gtfsNested=T
-  gtfsFolders=1:6  # if 'gtfsNested=T', the mode folders to include (PTV: see prepareGtfs.R)
-  retainGtfsDownload=T  # Whether to retain downloaded bundle after feed converted
-  # Select an analysis date, eg a midweek day that's not a public or school
-  # holiday; or set to NA to choose a representative weekday automatically from
-  # the GTFS feed's calendar
-  analysis_date=NA
-  onroadBus=T  # whether to route buses on roads (rather than create separate pseudo links)
-  
-  # PARALLEL PROCESSING
-  # Maximum number of cores to use in parallel processing (which is used in several
-  # functions): by default, all cores are used, but if parallel processing causes 
-  # memory overflow problems, try setting a maximum number, eg 'maxcores <- 8'; 
-  # but if no problems, leave as 'NA'
-  maxcores <- NA
-
-  # Outputs
-  # outputSubdirectory=format(Sys.time(),"%d%b%y_%H%M") # date_hour, eg. "17Aug21_1308"
-  if(exists("outputSubdirectory")){
-    outputSubdirectory=outputSubdirectory
-  } else {outputSubdirectory="generated_network"}
-  writeXml=F
-  writeShp=F
-  writeSqlite=T
+  # The parameters are set in a YAML config file for the city (eg
+  # 'config/melbourne.yml'), which is merged over 'config/default.yml'; see that
+  # file for the full list of parameters and their documentation. 'overrides'
+  # is a named list of parameter values to change for this run only (eg to
+  # resume a build from saved intermediates), without editing the config files.
+  source("./functions/readNetworkConfig.R")
+  config <- readNetworkConfig(configFile, overrides)
+  list2env(config$params, envir = environment())
 
   # Packages ----------------------------------------------------------------
 
@@ -225,6 +38,11 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
   if(outputSubdirectory != "" & dir.exists(outputDir)) dir_delete(outputDir)
   dir_create(paste0('./',outputDir))
   sink(paste0('./',outputDir,'/makeMatsimNetwork.log'), append=FALSE, split=TRUE)
+  # save the parameters used for this build with its outputs
+  yaml::write_yaml(config$resolved, paste0('./',outputDir,'/config.yml'),
+                   handlers = list(logical = function(x) {
+                     structure(ifelse(x, "true", "false"), class = "verbatim")
+                   }))
   # if (addGtfs) dir_create(paste0(outputDir,"/gtfs"))
 
   #  Functions --------------------------------------------------------------
@@ -572,6 +390,16 @@ makeNetwork<-function(city, outputSubdirectory = "generated_network"){
 
 ## JUST FOR TESTING
 #sink()
-#makeNetwork(city = "Bendigo")
-#makeNetwork(city = "Melbourne")
-#makeNetwork(city = "Victoria")
+#makeNetwork("./config/bendigo.yml")
+#makeNetwork("./config/melbourne.yml")
+#makeNetwork("./config/victoria.yml")
+
+# Running from the terminal: the config file, optionally followed by parameter
+# overrides as name=value, eg
+#   Rscript NetworkGenerator.R config/melbourne.yml extractOsm=false networkFromOsm=false
+if (sys.nframe() == 0 && length(commandArgs(trailingOnly = TRUE)) > 0) local({
+  args <- commandArgs(trailingOnly = TRUE)
+  overrides <- lapply(args[-1], function(a) yaml::yaml.load(sub("^[^=]*=", "", a)))
+  names(overrides) <- sub("=.*$", "", args[-1])
+  makeNetwork(args[1], overrides)
+})

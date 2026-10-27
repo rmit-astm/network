@@ -1,0 +1,22 @@
+# Greater Melbourne: merged over 'config/default.yml'
+city: Melbourne
+
+region:
+  region: ./data/greater_melbourne.sqlite
+  surroundingRegion: ./data/victoria.sqlite
+
+osm:
+  osmGpkg: ./output/melbourne_osm.gpkg
+  unconfiguredSqlite: ./output/melbourne_network_unconfigured.sqlite
+
+crop:
+  cropAreaPoly: city-of-melbourne_victoria
+
+elevation:
+  demFile: ./data/dem_melbourne.tif
+
+ndvi:
+  ndviFile: ./data/NDVI_Melbourne_2023.tif
+
+treeCanopyCover:
+  treeCanopyCoverFile: ./data/TCC_Melbourne_5m.tif
