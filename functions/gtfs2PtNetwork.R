@@ -120,10 +120,28 @@ processGtfs <- function(outputLocation = "./output/generated_network/pt/",
   validCalendar <- gtfs$calendar %>%
     filter(start_date<=analysis_date & end_date>=analysis_date) %>%
     filter(.data[[analysis_day]] == 1)
-
+  validServiceIds <- validCalendar$service_id
+  
+  # apply calendar_dates exceptions for the analysis date: exception_type 1 adds
+  # a service on that date, 2 removes it (eg public holidays, or a timetable
+  # replaced for that week). Dates are compared as YYYYMMDD strings so this
+  # works whether they were read as Date or integer.
+  if (!is.null(gtfs$calendar_dates) && nrow(gtfs$calendar_dates) > 0) {
+    ymd <- function(x) if (inherits(x, "Date")) format(x, "%Y%m%d") else as.character(x)
+    exceptions <- gtfs$calendar_dates %>%
+      filter(ymd(date) == ymd(analysis_date))
+    removedServices <- exceptions$service_id[exceptions$exception_type == 2]
+    addedServices <- exceptions$service_id[exceptions$exception_type == 1]
+    validServiceIds <- union(setdiff(validServiceIds, removedServices), addedServices)
+    echo(paste0("calendar_dates for ", ymd(analysis_date), ": removed ",
+                length(intersect(removedServices, validCalendar$service_id)),
+                " services, added ", length(setdiff(addedServices, validCalendar$service_id)),
+                " services\n"))
+  }
+  
   # trips during within the time period
   validTrips <- gtfs$trips %>%
-    filter(service_id %in% validCalendar$service_id) %>%
+    filter(service_id %in% validServiceIds) %>%
     dplyr::select(route_id,service_id,trip_id) %>%
     mutate(route_id=as.factor(route_id))
   
