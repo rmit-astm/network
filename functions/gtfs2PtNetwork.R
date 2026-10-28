@@ -293,43 +293,8 @@ processGtfs <- function(outputLocation = "./output/generated_network/pt/",
 
   # snapping the stops to the nearest node in the road network
   # for bus - nearest valid node on the nearest link
-  # setup for parallel processing and progress reporting
-  cluster <- startCluster(maxcores)
-  cores <- length(cluster)
-  # stop the cluster if this function exits early with an error
-  on.exit(try(stopCluster(cluster), silent = TRUE), add = TRUE)
-  pb <- txtProgressBar(max = max(nrow(validStopsBus), 2), style = 3)
-  progress <- function(n) setTxtProgressBar(pb, n)
-  opts <- list(progress = progress)
-  
-  # report
-  echo(paste("Finding nearest node on nearest link for", nrow(validStopsBus), "bus stops;",
-             "parallel processing with", cores, "cores\n"))
-  
-  # loop to find list of boundary points
-  nearestNodeBus <-
-    foreach(i = 1:nrow(validStopsBus),
-            # foreach(i = 1:10,
-            .combine = rbind,
-            .packages = c("dplyr", "sf"),
-            .options.snow = opts) %dopar% {
-              
-              stop <- validStopsBus[i,]
-              # nearest link (which must contain a NetworkNode) to the stop
-              nearest.link <- networkLinksBus[st_nearest_feature(stop, networkLinksBus), ]
-              # the link's NetworkNodes
-              eligible.nodes <- networkNodesBus %>%
-                filter(id == nearest.link$from_id | id == nearest.link$to_id)
-              # nearest of the link's NetworkNodes to the stop
-              nearest.node <- networkNodesBus %>%
-                filter(id == eligible.nodes$id[st_nearest_feature(stop, eligible.nodes)])
-              
-              return(nearest.node)
-            }
-  
-  # close the progress bar and cluster
-  close(pb)
-  stopCluster(cluster)
+  echo(paste("Finding nearest node on nearest link for", nrow(validStopsBus), "bus stops\n"))
+  nearestNodeBus <- nearestNodeOnNearestLink(validStopsBus, networkNodesBus, networkLinksBus)
 
   # otherwise - nearest valid node
   nearestNodeIdOther <- st_nearest_feature(validStopsOther, networkNodes)
@@ -692,6 +657,29 @@ exportGtfsSchedule <- function(links,
   }
   
   return(edgesCombined)
+}
+
+
+# function to find, for each stop, the nearer of the two end nodes of its
+# nearest link (an end node is only eligible if it is in 'nodes')
+nearestNodeOnNearestLink <- function(stops, nodes, links) {
+  if (nrow(stops) == 0) return(nodes[0, ])
+  nearestLink <- links[st_nearest_feature(stops, links), ]
+  stopXY <- st_coordinates(stops)
+  nodeXY <- st_coordinates(nodes)
+  # row in 'nodes' of each end node, and its squared distance to the stop
+  # (Inf where the end node is not eligible)
+  endNode <- function(endIds) {
+    row <- match(endIds, nodes$id)
+    d <- (stopXY[, 1] - nodeXY[row, 1])^2 + (stopXY[, 2] - nodeXY[row, 2])^2
+    d[is.na(row)] <- Inf
+    list(row = row, d = d)
+  }
+  from <- endNode(nearestLink$from_id)
+  to <- endNode(nearestLink$to_id)
+  # on a tie, take the node that comes first in 'nodes'
+  useFrom <- from$d < to$d | (from$d == to$d & from$row < to$row)
+  return(nodes[ifelse(useFrom, from$row, to$row), ])
 }
 
 
