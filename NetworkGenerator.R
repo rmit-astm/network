@@ -121,8 +121,7 @@ makeNetwork<-function(configFile, overrides = list()){
         filter(osm_id %in% networkUnconfigured[[2]]$osm_id)
       
     } else {
-      echo(paste("Unconfigured network file", unconfiguredSqlite, "not found; unable to proceed\n"))
-      return()
+      stop("Unconfigured network file ", unconfiguredSqlite, " not found; unable to proceed")
     }
   }
   
