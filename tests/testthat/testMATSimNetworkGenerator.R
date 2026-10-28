@@ -54,3 +54,27 @@ test_that("A build resumed from the checkpoint gives the same network", {
   expect_match(paste(readLines("output/test_resumed/makeMatsimNetwork.log"), collapse = "\n"),
                "Reading in checkpoint")
 })
+
+test_that("Destinations are found and linked to network nodes", {
+  wd <- getwd()
+  setwd("../..")
+  on.exit({unlink("output/test_destinations", recursive = TRUE); setwd(wd)})
+
+  makeNetwork("./tests/test_config.yml",
+              list(outputSubdirectory = "test_destinations", addDestinationLayer = TRUE,
+                   osmGpkg = "./tests/data/test_osm.gpkg",
+                   gtfs_feed = "./tests/data/test_gtfs.zip", downloadGtfs = FALSE))
+
+  output <- "output/test_destinations/network.sqlite"
+  destinations <- sf::st_read(output, layer = "destinations", quiet = TRUE)
+  nodes <- sf::st_read(output, layer = "nodes", quiet = TRUE)
+  expect_true(all(c("park", "pt_stop", "cafe") %in% destinations$dest_type))
+  expect_setequal(destinations$pt_stop_type[destinations$dest_type == "pt_stop"],
+                  c("tram", "train", "bus"))
+  # every destination has nodes for each mode, and they are in the network
+  for (mode in c("node_cycle", "node_walk", "node_car")) {
+    entryNodes <- as.numeric(unlist(strsplit(destinations[[mode]], ", ")))
+    expect_false(anyNA(entryNodes))
+    expect_true(all(entryNodes %in% nodes$id))
+  }
+})
