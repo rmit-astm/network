@@ -31,6 +31,9 @@ jobs:
     - name: Install R packages (and the system libraries they need)
       shell: Rscript {0}
       run: |
+        # the repository's .Rprofile replaces the one that sets the package
+        # repository, so set it here (Posit Package Manager, with Linux binaries)
+        options(repos = c(CRAN = Sys.getenv("RSPM")))
         install.packages("pak")
         pak::pkg_install(c("sf", "fs", "tidyverse", "data.table", "igraph", "terra",
                            "lwgeom", "tidytransit", "hablar", "hms", "osmextract",
