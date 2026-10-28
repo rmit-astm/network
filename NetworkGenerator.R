@@ -140,7 +140,8 @@ makeNetwork<-function(configFile, overrides = list()){
   if (simplifyEdges) {
     message("As 'simplifyEdges' is True, OSM 'bike lane project' tags will not be extracted: the edge simplification functions are not configured for them.  If the 'bike lane project' tags are required, set 'simplifyEdges' to False.")
   }
-  timeStep( osmAttributes <- processOsmTags(osm_metadata, defaults_df, simplifyEdges))
+  timeStep( osmAttributes <- processOsmTags(osm_metadata, defaults_df, simplifyEdges,
+                                           maxcores))
   
   edgesAttributed <- networkUnconfigured[[2]] %>%
     inner_join(osmAttributes, by="osm_id") %>%

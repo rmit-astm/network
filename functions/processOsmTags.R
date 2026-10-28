@@ -9,7 +9,7 @@
 # -               | no lane/track/path | 0              |
 #########################################################
 
-processOsmTags <- function(osm_df, this_defaults_df, simplifyEdges){
+processOsmTags <- function(osm_df, this_defaults_df, simplifyEdges, maxcores = NA){
   # osm_df <- osm_metadata
   # this_defaults_df <- defaults_df
   
@@ -26,105 +26,137 @@ processOsmTags <- function(osm_df, this_defaults_df, simplifyEdges){
     dplyr::select(osm_id,highway,highway_order,freespeed,permlanes,laneCapacity,
                   is_oneway,cycleway,is_cycle,is_walk,is_car,contrabike)
   
-  getMetadataInfo <- function(i) {
-    df <- osmWithDefaults[i,]
-    tags=tagList[[i]]
-
-    if (length(tags)>1) {
-      
-      # keys and values are odd and even-numbered tags respectively
-      keys <- tags[seq(1, length(tags), by = 2)]
-      values <- tags[seq(2, length(tags), by = 2)]
-      
-      cycleway_tags <- values[which(keys %like% "cycleway")]
-      if(any(is.na(cycleway_tags))) cycleway_tags <- c()
-      bicycle_tags <- values[which(keys=="bicycle")]
-      if(any(is.na(bicycle_tags))) bicycle_tags <- c()
-      car_tags <- values[which(keys %in% c("car","motor_vehicle"))]
-      if(any(is.na(car_tags))) car_tags <- c()
-      foot_tags <- values[which(keys %like% "foot")]
-      if(any(is.na(foot_tags))) foot_tags <- c()
-      surface_tags <- values[which(keys=="surface")]
-      if(any(is.na(surface_tags))) surface_tags <- c()
-      oneway_tags <-  as.character(values[which(keys=="oneway")])
-      if(length(oneway_tags)==0) oneway_tags <- c()
-      
-      if("maxspeed" %in% keys) {
-        maxSpeed=as.integer(values[which(keys=="maxspeed")])
-        # added this as some links had weird "masxspeed" values such as 500km/h!
-        # 150km/h limit might cause issues for autobahns in Germany, AJ Jan 2021.
-        if(!(is.na(maxSpeed)) & 140 < maxSpeed){
-          message("Skiping speeds higher than 140km/h from OSM, consider editing processOSMTags.R if higher speeds are desired - AJ Jan 2021.")
-          freeSpeed <- NA
-        }else{
-          freeSpeed=maxSpeed/3.6
-        }
-        # added is.na since one of the maxspeed has a value of "50; 40"
-        if(!is.na(freeSpeed)) {
-          df$freespeed[1]=freeSpeed
-        }
-      }
-      
-      df$surface[1]=surface_tags
-      if(any(oneway_tags=="yes")) df$is_oneway[1]=1
-      #if(any(bicycle_tags %in% c("yes","designated"))) df$cycleway[1]="unmarked"
-      if(any(cycleway_tags=="shared_lane")) df$cycleway[1]=1
-      if(any(cycleway_tags=="lane") & df$highway[1]!="cycleway") df$cycleway[1]=2
-      if(any(cycleway_tags=="track")& df$highway[1]!="cycleway") df$cycleway[1]=3
-      if(any(foot_tags=="no")& df$highway[1]=="cycleway") df$cycleway[1]=5
-      if(any(car_tags=="no")) df$is_car[1]=0
-      if(df$is_car[1]==0 & any(bicycle_tags %in% c("yes", "designated")) & df$cycleway[1]<5) df$cycleway[1]=4
-      if(any(foot_tags=="no")) df$is_walk[1]=0
-      if(any(foot_tags %in% c("yes","designated"))) df$is_walk[1]=1
-      if(df$cycleway[1]>0 | any(bicycle_tags %in% c("yes","designated"))) df$is_cycle[1]=1
-      if(any(bicycle_tags %in% "no")) df$is_cycle[1]=0
-      
-      # a 'lanes' tag that is zero or not a whole number (eg 'lanes=0', or
-      # 'lanes=2;3') is treated as missing, so the default number is used
-      taggedLanes = if ("lanes" %in% keys) {
-        suppressWarnings(as.integer(values[which(keys == "lanes")][1]))
-      } else NA
-      if (!is.na(taggedLanes) && taggedLanes > 0) {
-        # lanes is number of tagged lanes
-        df$permlanes[1] = taggedLanes
-      } else {
-        # lanes is default number, multiplied by 2 if two-way
-        newLanes = ifelse(df$is_oneway[1] == 0, df$permlanes[1] * 2, df$permlanes[1])
-        df$permlanes[1] = newLanes
-      }
-      
-      # contra-flow bike lanes (oneway, with 'no' or '-1' tag indicating bikes 
-      # can ride in other direction)
-      keys_to_check <- c("oneway:bicycle", "cycleway:left:oneway", 
-                         "cycleway:right:oneway", "cycleway:both:oneway")
-      if (df$is_oneway[1] == 1) {
-        for (key in keys_to_check) {
-          if (any(keys == key)) {
-            if (values[which(keys == key)] %in% c("no", "-1")) {
-              df$contrabike[1] = 1
-              break # exit the loop as soon as a match is found
+  # process the tags in chunks of rows in parallel, sending each worker only
+  # the rows (and tags) in its chunk
+  cores <- detectCores()
+  if (!is.na(maxcores)) cores <- min(cores, maxcores)
+  chunks <- split(seq_len(nrow(osmWithDefaults)),
+                  cut(seq_len(nrow(osmWithDefaults)),
+                      min(cores * 10, nrow(osmWithDefaults)), labels = FALSE))
+  cluster <- parallel::makeCluster(cores)
+  doSNOW::registerDoSNOW(cluster)
+  # stop the cluster if this function exits early with an error
+  on.exit(try(stopCluster(cluster), silent = TRUE), add = TRUE)
+  pb <- txtProgressBar(max = length(chunks), style = 3)
+  progress <- function(n) setTxtProgressBar(pb, n)
+  opts <- list(progress = progress)
+  
+  echo(paste("Processing the tags of", nrow(osmWithDefaults), 
+             "OSM ways; parallel processing with", cores, "cores\n"))
+  
+  osmAttributed <-
+    foreach(chunk = lapply(chunks, function(rows) osmWithDefaults[rows, ]),
+            chunkTags = lapply(chunks, function(rows) tagList[rows]),
+            .packages = c("dplyr", "data.table", "stringr"),
+            .export = c("getMetadataInfo", "getBikelaneProjectTags"),
+            .options.snow = opts) %dopar% {
+              bind_rows(lapply(seq_len(nrow(chunk)), function(i) {
+                getMetadataInfo(chunk[i, ], chunkTags[[i]], simplifyEdges)
+              }))
             }
-          }
-        }
-      }
-
-      # add Melbourne Bikelane Project tags, if not simplifying edges
-      if (!simplifyEdges) df <- getBikelaneProjectTags(df, keys, values)
-      
-    } else {
-      # if no tags, then lanes is default number, multiplied by 2 if two-way
-      newLanes = ifelse(df$is_oneway[1] == 0, df$permlanes[1] * 2, df$permlanes[1])
-      df$permlanes[1] = newLanes
-    }
-    return(df)
-  }
-
-  osmAttributed <- lapply(1:nrow(osmWithDefaults),getMetadataInfo) %>%
+  
+  # close the progress bar and cluster
+  close(pb)
+  stopCluster(cluster)
+  
+  osmAttributed <- osmAttributed %>%
     bind_rows() %>%
     # looks like the ones with no modes are mostly closed walking or cycling tracks
     filter(is_cycle+is_walk+is_car>0)
     
   return(osmAttributed)
+}
+
+# attributes of an OSM way (a row of the defaults table) from its tags
+getMetadataInfo <- function(df, tags, simplifyEdges) {
+
+  if (length(tags)>1) {
+    
+    # keys and values are odd and even-numbered tags respectively
+    keys <- tags[seq(1, length(tags), by = 2)]
+    values <- tags[seq(2, length(tags), by = 2)]
+    
+    cycleway_tags <- values[which(keys %like% "cycleway")]
+    if(any(is.na(cycleway_tags))) cycleway_tags <- c()
+    bicycle_tags <- values[which(keys=="bicycle")]
+    if(any(is.na(bicycle_tags))) bicycle_tags <- c()
+    car_tags <- values[which(keys %in% c("car","motor_vehicle"))]
+    if(any(is.na(car_tags))) car_tags <- c()
+    foot_tags <- values[which(keys %like% "foot")]
+    if(any(is.na(foot_tags))) foot_tags <- c()
+    surface_tags <- values[which(keys=="surface")]
+    if(any(is.na(surface_tags))) surface_tags <- c()
+    oneway_tags <-  as.character(values[which(keys=="oneway")])
+    if(length(oneway_tags)==0) oneway_tags <- c()
+    
+    if("maxspeed" %in% keys) {
+      maxSpeed=as.integer(values[which(keys=="maxspeed")])
+      # added this as some links had weird "masxspeed" values such as 500km/h!
+      # 150km/h limit might cause issues for autobahns in Germany, AJ Jan 2021.
+      if(!(is.na(maxSpeed)) & 140 < maxSpeed){
+        message("Skiping speeds higher than 140km/h from OSM, consider editing processOSMTags.R if higher speeds are desired - AJ Jan 2021.")
+        freeSpeed <- NA
+      }else{
+        freeSpeed=maxSpeed/3.6
+      }
+      # added is.na since one of the maxspeed has a value of "50; 40"
+      if(!is.na(freeSpeed)) {
+        df$freespeed[1]=freeSpeed
+      }
+    }
+    
+    df$surface[1]=surface_tags
+    if(any(oneway_tags=="yes")) df$is_oneway[1]=1
+    #if(any(bicycle_tags %in% c("yes","designated"))) df$cycleway[1]="unmarked"
+    if(any(cycleway_tags=="shared_lane")) df$cycleway[1]=1
+    if(any(cycleway_tags=="lane") & df$highway[1]!="cycleway") df$cycleway[1]=2
+    if(any(cycleway_tags=="track")& df$highway[1]!="cycleway") df$cycleway[1]=3
+    if(any(foot_tags=="no")& df$highway[1]=="cycleway") df$cycleway[1]=5
+    if(any(car_tags=="no")) df$is_car[1]=0
+    if(df$is_car[1]==0 & any(bicycle_tags %in% c("yes", "designated")) & df$cycleway[1]<5) df$cycleway[1]=4
+    if(any(foot_tags=="no")) df$is_walk[1]=0
+    if(any(foot_tags %in% c("yes","designated"))) df$is_walk[1]=1
+    if(df$cycleway[1]>0 | any(bicycle_tags %in% c("yes","designated"))) df$is_cycle[1]=1
+    if(any(bicycle_tags %in% "no")) df$is_cycle[1]=0
+    
+    # a 'lanes' tag that is zero or not a whole number (eg 'lanes=0', or
+    # 'lanes=2;3') is treated as missing, so the default number is used
+    taggedLanes = if ("lanes" %in% keys) {
+      suppressWarnings(as.integer(values[which(keys == "lanes")][1]))
+    } else NA
+    if (!is.na(taggedLanes) && taggedLanes > 0) {
+      # lanes is number of tagged lanes
+      df$permlanes[1] = taggedLanes
+    } else {
+      # lanes is default number, multiplied by 2 if two-way
+      newLanes = ifelse(df$is_oneway[1] == 0, df$permlanes[1] * 2, df$permlanes[1])
+      df$permlanes[1] = newLanes
+    }
+    
+    # contra-flow bike lanes (oneway, with 'no' or '-1' tag indicating bikes 
+    # can ride in other direction)
+    keys_to_check <- c("oneway:bicycle", "cycleway:left:oneway", 
+                       "cycleway:right:oneway", "cycleway:both:oneway")
+    if (df$is_oneway[1] == 1) {
+      for (key in keys_to_check) {
+        if (any(keys == key)) {
+          if (values[which(keys == key)] %in% c("no", "-1")) {
+            df$contrabike[1] = 1
+            break # exit the loop as soon as a match is found
+          }
+        }
+      }
+    }
+
+    # add Melbourne Bikelane Project tags, if not simplifying edges
+    if (!simplifyEdges) df <- getBikelaneProjectTags(df, keys, values)
+    
+  } else {
+    # if no tags, then lanes is default number, multiplied by 2 if two-way
+    newLanes = ifelse(df$is_oneway[1] == 0, df$permlanes[1] * 2, df$permlanes[1])
+    df$permlanes[1] = newLanes
+  }
+  return(df)
 }
 
 
