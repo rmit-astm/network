@@ -143,9 +143,11 @@ makeNetwork<-function(configFile, overrides = list()){
   timeStep( osmAttributes <- processOsmTags(osm_metadata, defaults_df, simplifyEdges,
                                            maxcores))
   
+  # (the highway type is kept as 'highway_order', and restored from
+  # 'highway_lookup' when the data is restructured)
   edgesAttributed <- networkUnconfigured[[2]] %>%
     inner_join(osmAttributes, by="osm_id") %>%
-    dplyr::select(-highway, highway_order)
+    dplyr::select(-highway)
   
   # exclude contraflow bikelanes in 'surroundingRegion' if it is different from 
   # 'region', and if edges are being simplified (because the surroundingRegion
