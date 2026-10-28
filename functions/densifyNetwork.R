@@ -37,9 +37,14 @@ densifyNetwork <- function(networkList, minimum_length=400, densifyBikeways=F){
       filter(length>minimum_length & !highway_order%in%c(1,8,16,17,18,19,20,21,22))
   }
 
+  # nothing to densify (eg a small area with no long links), so return unchanged
+  if (nrow(links_to_segmentize) == 0) {
+    return(list(nodes_df, links_df %>% dplyr::select(-tmp_id)))
+  }
+
   links_unsegmented <- links_df %>%
     filter(!tmp_id%in%links_to_segmentize$tmp_id)
-  
+
   # segment_nodes <- links_to_segmentize %>%
   #   st_line_sample(density = units::set_units(minimum_length, m))
 

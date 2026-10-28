@@ -1,5 +1,5 @@
 # MATSim network for Melbourne
-`master`![passing?](https://github.com/matsim-melbourne/network/workflows/build/badge.svg?branch=master) `dev`![passing?](https://github.com/matsim-melbourne/network/workflows/build/badge.svg?branch=dev)
+`master`![passing?](https://github.com/rmit-astm/network/actions/workflows/ci.yml/badge.svg?branch=master) `dev`![passing?](https://github.com/rmit-astm/network/actions/workflows/ci.yml/badge.svg?branch=dev)
 
 This page explains the steps for building a road network model for active transport simulation models such as MATSim, including active transportation related infrastructure and attributes.    
 
