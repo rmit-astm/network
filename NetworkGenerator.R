@@ -281,11 +281,12 @@ makeNetwork<-function(configFile, overrides = list()){
   timeStep(networkRestructured <- restructureData(networkWithNodeDetails, highway_lookup,
                                                   defaults_df))
   
-  # Doubling capacity for small road segments to avoid bottlenecks
+  # Increasing capacity for small road segments to avoid bottlenecks
   # Set adjustCapacity to True if this adjustment is desired
   if(adjustCapacity) {
     networkRestructured[[2]] <- networkRestructured[[2]] %>% 
-      mutate(capacity = ifelse(length<100 , capacity*2, capacity))
+      mutate(capacity = ifelse(length<adjustCapacityMaxLength,
+                               capacity*adjustCapacityMultiplier, capacity))
   }
   
   # Adding elevation to nodes and gradient to links
@@ -353,7 +354,7 @@ makeNetwork<-function(configFile, overrides = list()){
   # douglas-peucker algorithm) but ensure that endpoints remain unchanged
   if (simplifyAppearance) {
     timeStep(networkOneway[[2]] <- simplifyLinkAppearance(networkOneway[[2]],
-                                                             dTolerance = 20))
+                                                          dTolerance = appearanceTolerance))
   }
 
   # Add LTS (using assumed traffic volumes)
@@ -363,7 +364,7 @@ makeNetwork<-function(configFile, overrides = list()){
   #   project' tags are present
   timeStep(networkOneway <- addLTSAssumedTraffic(list(networkOneway[[1]], 
                                                       networkOneway[[2]]),
-                                                 excludeInadequateLanes = T))
+                                                 excludeInadequateLanes))
   
   networkFinal <- networkOneway
   

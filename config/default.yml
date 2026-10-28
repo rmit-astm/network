@@ -81,16 +81,26 @@ simplification:
   # Whether to simplify the appearance of links while keeping start and end
   # points unchanged
   simplifyAppearance: false
+  # if 'simplifyAppearance', the Douglas-Peucker tolerance (m)
+  appearanceTolerance: 20
 
 densification:
   densificationMaxLength: 500
   densifyBikeways: true
 
 capacity:
-  # Whether to multiply capacity of links shorter than 100m by 2 or not. In some
-  # cases such as when building network for simulation of small samples (e.g.
-  # <1%) it might be desired
+  # Whether to multiply capacity of short links (by default, those shorter than
+  # 100m, by 2) or not. In some cases such as when building network for
+  # simulation of small samples (e.g. <1%) it might be desired
   adjustCapacity: false
+  adjustCapacityMaxLength: 100  # links shorter than this (m) are adjusted
+  adjustCapacityMultiplier: 2
+
+lts:
+  # Whether level of traffic stress treats on-road cycle lanes as mixed traffic
+  # if they are too narrow or shared with parking (only where OSM 'bike lane
+  # project' tags are present)
+  excludeInadequateLanes: true
 
 elevation:
   # Whether to add elevation or not
