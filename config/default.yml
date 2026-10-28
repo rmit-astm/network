@@ -156,7 +156,7 @@ outputs:
   writeSqlite: true
 
 bendigo:
-  # City of Greater Bendigo data, only used if city is 'Bendigo'
+  # City of Greater Bendigo data, only used if 'addBendigoData' is true
   addBendigoData: false
   bendigoParking: ""
   bendigoParkingPoly: ""

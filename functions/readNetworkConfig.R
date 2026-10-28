@@ -90,11 +90,11 @@ readNetworkConfig <- function(configFile,
                 treeCanopyCoverFile = params$addTreeCanopyCover,
                 schoolZoneFile = params$addSchoolZones,
                 gtfs_feed = (params$addGtfs | params$addDestinationLayer) & !params$downloadGtfs,
-                bendigoParking = params$city == "Bendigo" & params$addBendigoData,
-                bendigoBikeRacks = params$city == "Bendigo" & params$addBendigoData,
-                bendigoEverydayRoutes = params$city == "Bendigo" & params$addBendigoData,
-                bendigoExistingProtected = params$city == "Bendigo" & params$addBendigoData,
-                bendigoProposedProtected = params$city == "Bendigo" & params$addBendigoData)
+                bendigoParking = params$addBendigoData,
+                bendigoBikeRacks = params$addBendigoData,
+                bendigoEverydayRoutes = params$addBendigoData,
+                bendigoExistingProtected = params$addBendigoData,
+                bendigoProposedProtected = params$addBendigoData)
   problems <- c()
   for (n in names(required)[required]) {
     if (is.na(params[[n]]) || params[[n]] == "") {

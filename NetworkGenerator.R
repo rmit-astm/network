@@ -245,17 +245,13 @@ makeNetwork<-function(configFile, overrides = list()){
   
   # adding destinations layer
   if (addDestinationLayer) {
-    if (city == "Bendigo") {
-      if (addBendigoData) {
-        timeStep(localDestinations <- getDestinationsBendigo(bendigoParking,
-                                                             bendigoParkingPoly,
-                                                             bendigoParkingLine,
-                                                             bendigoBikeRacks,
-                                                             osmGpkg,
-                                                             outputCrs))
-      } else {
-        localDestinations <- NULL
-      }
+    if (addBendigoData) {
+      timeStep(localDestinations <- getDestinationsBendigo(bendigoParking,
+                                                           bendigoParkingPoly,
+                                                           bendigoParkingLine,
+                                                           bendigoBikeRacks,
+                                                           osmGpkg,
+                                                           outputCrs))
     } else {
       localDestinations <- NULL
     }
@@ -271,10 +267,8 @@ makeNetwork<-function(configFile, overrides = list()){
                                              localDestinations,
                                              maxcores))
     
-    if (city == "Bendigo") {
-      if (addBendigoData) {
-        timeStep(destinations <- addPremiumParkTagBendigo(destinations))
-      } 
+    if (addBendigoData) {
+      timeStep(destinations <- addPremiumParkTagBendigo(destinations))
     }
   }
 
@@ -336,25 +330,23 @@ makeNetwork<-function(configFile, overrides = list()){
   }
   
   # Adding Bendigo 'everyday routes' and 'proposed protected routes' as link attributes
-  if (city == "Bendigo") {
-    if (addBendigoData) {
-      timeStep(networkOneway[[2]] <- addBendigoEverydayRoutes(networkOneway[[1]],
-                                                              networkOneway[[2]],
-                                                              bendigoEverydayRoutes,
-                                                              bendigoExistingProtected,
-                                                              outputCrs,
-                                                              maxcores))
-      timeStep(networkOneway[[2]] <- 
-                 addBendigoProposedProtected(networkOneway[[1]],
-                                             networkOneway[[2]],
-                                             bendigoProposedProtected,
-                                             defaults_df,
-                                             addNDVI, ndviFile, ndviBuffDist, 
-                                             addTreeCanopyCover, treeCanopyCoverFile,
-                                             addElevation,
-                                             outputCrs,
-                                             maxcores)) 
-    }
+  if (addBendigoData) {
+    timeStep(networkOneway[[2]] <- addBendigoEverydayRoutes(networkOneway[[1]],
+                                                            networkOneway[[2]],
+                                                            bendigoEverydayRoutes,
+                                                            bendigoExistingProtected,
+                                                            outputCrs,
+                                                            maxcores))
+    timeStep(networkOneway[[2]] <- 
+               addBendigoProposedProtected(networkOneway[[1]],
+                                           networkOneway[[2]],
+                                           bendigoProposedProtected,
+                                           defaults_df,
+                                           addNDVI, ndviFile, ndviBuffDist, 
+                                           addTreeCanopyCover, treeCanopyCoverFile,
+                                           addElevation,
+                                           outputCrs,
+                                           maxcores)) 
   }
   
   # Simplify appearance of links to avoid short segments (using
