@@ -38,6 +38,8 @@ makeNetwork<-function(configFile, overrides = list()){
   if(outputSubdirectory != "" & dir.exists(outputDir)) dir_delete(outputDir)
   dir_create(paste0('./',outputDir))
   sink(paste0('./',outputDir,'/makeMatsimNetwork.log'), append=FALSE, split=TRUE)
+  # end logging when the build finishes or stops with an error
+  on.exit(sink(), add = TRUE)
   # save the parameters used for this build with its outputs
   yaml::write_yaml(config$resolved, paste0('./',outputDir,'/config.yml'),
                    handlers = list(logical = function(x) {
@@ -382,9 +384,6 @@ makeNetwork<-function(configFile, overrides = list()){
   if(writeSqlite) system.time(exportSQlite(networkFinal, outputDir, outputCrs))
   if(writeShp) system.time(exportShp(networkFinal, outputDir, outputCrs))
   if(writeXml) system.time(exportXML(networkFinal, outputDir)) 
-  
-  # end logging
-  sink()
 }
 
 ## JUST FOR TESTING

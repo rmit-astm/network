@@ -15,3 +15,16 @@ test_that("Network generation from Sqlite input works", {
 })
 
 
+
+test_that("A failed build stops logging and reports the error", {
+  sinks <- sink.number()
+  wd <- getwd()
+  setwd("../..")
+  on.exit({unlink("output/test_error", recursive = TRUE); setwd(wd)})
+
+  # an invalid output CRS fails just after logging has started
+  expect_error(suppressWarnings(
+    makeNetwork("./tests/test_config.yml",
+                list(outputSubdirectory = "test_error", outputCrs = "not-a-crs"))))
+  expect_equal(sink.number(), sinks)
+})
