@@ -259,10 +259,13 @@ addDestinations <- function(nodes_current,
     dplyr::select(id, dest_id)
   
   # pseudo entry points
-  # buffered links
-  links.cycle.buffered <- st_buffer(links.cycle, 30)
-  links.walk.buffered <- st_buffer(links.walk, 30)
-  links.car.buffered <- st_buffer(links.car, 30)
+  # whether points are within a distance of any of the links, from the distance
+  # to their nearest link (buffering the links instead uses too much memory for
+  # large networks, such as all of Victoria)
+  nearLinks <- function(points, links, dist) {
+    nearest <- st_nearest_feature(points, links)
+    as.numeric(st_distance(points, st_geometry(links)[nearest], by_element = TRUE)) <= dist
+  }
   
   # setup for parallel processing and progress reporting
   cores <- detectCores()
@@ -315,21 +318,21 @@ addDestinations <- function(nodes_current,
   # pseudo entry points with nodes
   pseudo.entry.nodes.cycle <- boundary.sf %>%
     # keep only those within 30m of cyclable links
-    st_filter(links.cycle.buffered, .predicate = st_intersects) %>%
+    filter(nearLinks(., links.cycle, 30)) %>%
     # nearest nodes to the entry points
     mutate(node_cycle = nodes.cycle$id[st_nearest_feature(., nodes.cycle)]) %>%
     st_drop_geometry()
   
   pseudo.entry.nodes.walk <- boundary.sf %>%
     # keep only those within 30m of walkable links
-    st_filter(links.walk.buffered, .predicate = st_intersects) %>%
+    filter(nearLinks(., links.walk, 30)) %>%
     # nearest nodes to the entry points
     mutate(node_walk = nodes.walk$id[st_nearest_feature(., nodes.walk)]) %>%
     st_drop_geometry()
   
   pseudo.entry.nodes.car <- boundary.sf %>%
     # keep only those within 30m of driveable links
-    st_filter(links.car.buffered, .predicate = st_intersects) %>%
+    filter(nearLinks(., links.car, 30)) %>%
     # nearest nodes to the entry points
     mutate(node_car = nodes.car$id[st_nearest_feature(., nodes.car)]) %>%
     st_drop_geometry()
