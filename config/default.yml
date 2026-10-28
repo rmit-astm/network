@@ -160,6 +160,16 @@ gtfs:
   analysis_date: null
   onroadBus: true  # whether to route buses on roads (rather than create separate pseudo links)
 
+checkpoint:
+  # Whether to save the network just before the public transport step (nodes,
+  # links and destinations) to 'checkpointSqlite', so that a build can be resumed
+  # from there, eg if the public transport step fails
+  saveCheckpoint: false
+  # Whether to start from 'checkpointSqlite' (saved by an earlier build), skipping
+  # all the steps before public transport
+  startFromCheckpoint: false
+  checkpointSqlite: ""
+
 outputs:
   writeXml: false
   writeShp: false

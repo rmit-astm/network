@@ -82,9 +82,10 @@ readNetworkConfig <- function(configFile,
   # check that the input files required by the selected options exist
   required <- c(region = TRUE,
                 surroundingRegion = TRUE,
-                fullExtractLocation = params$extractOsm & params$useFullExtractHeld,
-                osmGpkg = !params$extractOsm & params$networkFromOsm,
-                unconfiguredSqlite = !params$networkFromOsm,
+                fullExtractLocation = params$extractOsm & params$useFullExtractHeld & !params$startFromCheckpoint,
+                osmGpkg = !params$extractOsm & params$networkFromOsm & !params$startFromCheckpoint,
+                unconfiguredSqlite = !params$networkFromOsm & !params$startFromCheckpoint,
+                checkpointSqlite = params$startFromCheckpoint,
                 demFile = params$addElevation,
                 ndviFile = params$addNDVI,
                 treeCanopyCoverFile = params$addTreeCanopyCover,
@@ -102,6 +103,9 @@ readNetworkConfig <- function(configFile,
     } else if (!file.exists(params[[n]])) {
       problems <- c(problems, paste0(n, " not found at '", params[[n]], "'"))
     }
+  }
+  if (params$saveCheckpoint & params$checkpointSqlite == "") {
+    problems <- c(problems, "checkpointSqlite is not set, but saveCheckpoint is true")
   }
   if (params$crop2Area & params$cropAreaPoly == "") {
     problems <- c(problems, "cropAreaPoly is not set, but crop2Area is true")

@@ -55,6 +55,7 @@ makeNetwork<-function(configFile, overrides = list()){
   echo("========================================================\n")
   echo("                **Network Generation Setting**          \n")
   echo("--------------------------------------------------------\n")
+  echo(paste0("- Starting from checkpoint:                       ", startFromCheckpoint,"\n"))
   echo(paste0("- Getting OSM extract:                            ", extractOsm,"\n"))
   echo(paste0("- Processing the OSM extract:                     ", networkFromOsm,"\n"))
   echo(paste0("- Cropping to a test area:                        ", crop2Area,"\n"))
@@ -75,235 +76,262 @@ makeNetwork<-function(configFile, overrides = list()){
   echo("                **Launching Network Generation**        \n")
   echo("--------------------------------------------------------\n")
   
-  # Extracting OSM
-  if (extractOsm) {
-    echo(paste0("Extracting OSM for ", city, "\n"))
-    timeStep(getOsmExtract(region, surroundingRegion, outputCrs,
-                           regionBufferDist, osmGpkg, retainDownload,
-                           useFullExtractHeld, fullExtractLocation))
-  }
-
   # Downloading GTFS feed (used for the PT network and for PT stop destinations)
   if (downloadGtfs & (addGtfs | addDestinationLayer)) {
     timeStep(getGtfsFeed(gtfsUrl, gtfsBundle, gtfs_feed, gtfsNested, gtfsFolders,
                          retainGtfsDownload))
   }
 
-  # Processing OSM, or loading existing layers if not required
-  if(networkFromOsm) {
-    echo(paste0("Starting to process osm extract file, ", osmGpkg, "\n"))
-    timeStep(networkUnconfiguredOutputs <- processOsm(osmGpkg, region, regionBufferDist, 
-                                                      outputCrs, maxcores))
-    
-    if (saveUnconfigured) {
-      if (file_exists(unconfiguredSqlite)) st_delete(unconfiguredSqlite)
-      st_write(networkUnconfiguredOutputs[[1]], unconfiguredSqlite, layer = "nodes")
-      st_write(networkUnconfiguredOutputs[[2]], unconfiguredSqlite, layer = "edges")
-      st_write(networkUnconfiguredOutputs[[3]], unconfiguredSqlite, layer = "osm_metadata")
-    }
-    
-    networkUnconfigured <- list(networkUnconfiguredOutputs[[1]],
-                                networkUnconfiguredOutputs[[2]])
-    osm_metadata <- networkUnconfiguredOutputs[[3]]
-
-  } else {
-    
-    if (file_exists(unconfiguredSqlite)) {
-      echo(paste("Reading in existing unconfigured network,", unconfiguredSqlite, "\n"))
-      networkUnconfigured <- 
-        list(st_read(unconfiguredSqlite, layer = "nodes") %>% st_set_geometry("geom"),
-             st_read(unconfiguredSqlite, layer = "edges") %>% st_set_geometry("geom"))
-      if (st_crs(networkUnconfigured[[1]])$epsg != outputCrs) {
-        networkUnconfigured[[1]] <- st_transform(networkUnconfigured[[1]], outputCrs)
-      }
-      if(st_crs(networkUnconfigured[[2]])$epsg != outputCrs) {
-        networkUnconfigured[[2]] <- st_transform(networkUnconfigured[[2]], outputCrs)
-      }
-      osm_metadata <- st_read(unconfiguredSqlite, layer = "osm_metadata") %>%
-        filter(osm_id %in% networkUnconfigured[[2]]$osm_id)
-      
-    } else {
-      stop("Unconfigured network file ", unconfiguredSqlite, " not found; unable to proceed")
-    }
-  }
-  
-  # crop to test area if required
-  if(crop2Area)timeStep(networkUnconfigured <- crop2Poly(networkUnconfigured,
-                                                            cropAreaPoly,
-                                                            outputCrs))
-  # process OSM metadata
-  echo("processing OSM meta data\n")
   echo("Building default OSM attribute tables\n")
   defaults_df <- buildDefaultsDF()
   highway_lookup <- defaults_df %>% dplyr::select(highway, highway_order)
-  echo("Processing OSM tags and joining with defaults\n")
-  if (simplifyEdges) {
-    message("As 'simplifyEdges' is True, OSM 'bike lane project' tags will not be extracted: the edge simplification functions are not configured for them.  If the 'bike lane project' tags are required, set 'simplifyEdges' to False.")
-  }
-  timeStep( osmAttributes <- processOsmTags(osm_metadata, defaults_df, simplifyEdges,
-                                           maxcores))
-  
-  # (the highway type is kept as 'highway_order', and restored from
-  # 'highway_lookup' when the data is restructured)
-  edgesAttributed <- networkUnconfigured[[2]] %>%
-    inner_join(osmAttributes, by="osm_id") %>%
-    dplyr::select(-highway)
-  
-  # exclude contraflow bikelanes in 'surroundingRegion' if it is different from 
-  # 'region', and if edges are being simplified (because the surroundingRegion
-  # contains main roads only, and simplification can extend contraflow lanes for 
-  # very long distances along them)
-  if (simplifyEdges & surroundingRegion != region) {
-    timeStep(edgesAttributed <- confineContrabikeToRegion(edgesAttributed, region,
-                                                          regionBufferDist, outputCrs))
-  }
 
-  # keep only the largest connected component
-  timeStep(largestComponent <- largestConnectedComponent(networkUnconfigured[[1]], edgesAttributed))
+  # All the steps before the public transport step, or starting from a
+  # checkpoint saved by an earlier build just before that step
+  if (!startFromCheckpoint) {
+    # Extracting OSM
+    if (extractOsm) {
+      echo(paste0("Extracting OSM for ", city, "\n"))
+      timeStep(getOsmExtract(region, surroundingRegion, outputCrs,
+                             regionBufferDist, osmGpkg, retainDownload,
+                             useFullExtractHeld, fullExtractLocation))
+    }
 
-  # simplify intersections while preserving attributes and original geometry
-  timeStep(intersectionsSimplified <- simplifyIntersections(largestComponent[[1]],
-                                                               largestComponent[[2]],
-                                                               shortLinkLength,
-                                                               outputCrs))
+    # Processing OSM, or loading existing layers if not required
+    if(networkFromOsm) {
+      echo(paste0("Starting to process osm extract file, ", osmGpkg, "\n"))
+      timeStep(networkUnconfiguredOutputs <- processOsm(osmGpkg, region, regionBufferDist, 
+                                                        outputCrs, maxcores))
+    
+      if (saveUnconfigured) {
+        if (file_exists(unconfiguredSqlite)) st_delete(unconfiguredSqlite)
+        st_write(networkUnconfiguredOutputs[[1]], unconfiguredSqlite, layer = "nodes")
+        st_write(networkUnconfiguredOutputs[[2]], unconfiguredSqlite, layer = "edges")
+        st_write(networkUnconfiguredOutputs[[3]], unconfiguredSqlite, layer = "osm_metadata")
+      }
+    
+      networkUnconfigured <- list(networkUnconfiguredOutputs[[1]],
+                                  networkUnconfiguredOutputs[[2]])
+      osm_metadata <- networkUnconfiguredOutputs[[3]]
+
+    } else {
+    
+      if (file_exists(unconfiguredSqlite)) {
+        echo(paste("Reading in existing unconfigured network,", unconfiguredSqlite, "\n"))
+        networkUnconfigured <- 
+          list(st_read(unconfiguredSqlite, layer = "nodes") %>% st_set_geometry("geom"),
+               st_read(unconfiguredSqlite, layer = "edges") %>% st_set_geometry("geom"))
+        if (st_crs(networkUnconfigured[[1]])$epsg != outputCrs) {
+          networkUnconfigured[[1]] <- st_transform(networkUnconfigured[[1]], outputCrs)
+        }
+        if(st_crs(networkUnconfigured[[2]])$epsg != outputCrs) {
+          networkUnconfigured[[2]] <- st_transform(networkUnconfigured[[2]], outputCrs)
+        }
+        osm_metadata <- st_read(unconfiguredSqlite, layer = "osm_metadata") %>%
+          filter(osm_id %in% networkUnconfigured[[2]]$osm_id)
+      
+      } else {
+        stop("Unconfigured network file ", unconfiguredSqlite, " not found; unable to proceed")
+      }
+    }
   
-  # simplify edges while preserving attributes and original geometry
-  if (simplifyEdges) {
-    # Merge edges going between the same two nodes, picking the shortest geometry.
-    # * One-way edges going in the same direction will be merged
-    # * Pairs of one-way edges in opposite directions will be merged into a two-way edge.
-    # * Two-way edges will be merged regardless of direction.
-    # * One-way edges will NOT be merged with two-way edges.
-    # * Non-car edges do NOT count towards the merged lane count (permlanes)
-    timeStep(edgesCombined <- combineRedundantEdges(intersectionsSimplified[[1]],
-                                                       intersectionsSimplified[[2]],
-                                                       outputCrs))
+    # crop to test area if required
+    if(crop2Area)timeStep(networkUnconfigured <- crop2Poly(networkUnconfigured,
+                                                              cropAreaPoly,
+                                                              outputCrs))
+    # process OSM metadata
+    echo("processing OSM meta data\n")
+    echo("Processing OSM tags and joining with defaults\n")
+    if (simplifyEdges) {
+      message("As 'simplifyEdges' is True, OSM 'bike lane project' tags will not be extracted: the edge simplification functions are not configured for them.  If the 'bike lane project' tags are required, set 'simplifyEdges' to False.")
+    }
+    timeStep( osmAttributes <- processOsmTags(osm_metadata, defaults_df, simplifyEdges,
+                                             maxcores))
+  
+    # (the highway type is kept as 'highway_order', and restored from
+    # 'highway_lookup' when the data is restructured)
+    edgesAttributed <- networkUnconfigured[[2]] %>%
+      inner_join(osmAttributes, by="osm_id") %>%
+      dplyr::select(-highway)
+  
+    # exclude contraflow bikelanes in 'surroundingRegion' if it is different from 
+    # 'region', and if edges are being simplified (because the surroundingRegion
+    # contains main roads only, and simplification can extend contraflow lanes for 
+    # very long distances along them)
+    if (simplifyEdges & surroundingRegion != region) {
+      timeStep(edgesAttributed <- confineContrabikeToRegion(edgesAttributed, region,
+                                                            regionBufferDist, outputCrs))
+    }
+
+    # keep only the largest connected component
+    timeStep(largestComponent <- largestConnectedComponent(networkUnconfigured[[1]], edgesAttributed))
+
+    # simplify intersections while preserving attributes and original geometry
+    timeStep(intersectionsSimplified <- simplifyIntersections(largestComponent[[1]],
+                                                                 largestComponent[[2]],
+                                                                 shortLinkLength,
+                                                                 outputCrs))
+  
+    # simplify edges while preserving attributes and original geometry
+    if (simplifyEdges) {
+      # Merge edges going between the same two nodes, picking the shortest geometry.
+      # * One-way edges going in the same direction will be merged
+      # * Pairs of one-way edges in opposite directions will be merged into a two-way edge.
+      # * Two-way edges will be merged regardless of direction.
+      # * One-way edges will NOT be merged with two-way edges.
+      # * Non-car edges do NOT count towards the merged lane count (permlanes)
+      timeStep(edgesCombined <- combineRedundantEdges(intersectionsSimplified[[1]],
+                                                         intersectionsSimplified[[2]],
+                                                         outputCrs))
     
-    # Merge one-way and two-way edges going between the same two nodes. In these 
-    # cases, the merged attributes will be two-way.
-    # This guarantees that there will only be a single edge between any two nodes.
-    timeStep(combinedUndirectedAndDirected <- 
-                  combineUndirectedAndDirectedEdges(edgesCombined[[1]],
-                                                    edgesCombined[[2]],
-                                                    outputCrs))
+      # Merge one-way and two-way edges going between the same two nodes. In these 
+      # cases, the merged attributes will be two-way.
+      # This guarantees that there will only be a single edge between any two nodes.
+      timeStep(combinedUndirectedAndDirected <- 
+                    combineUndirectedAndDirectedEdges(edgesCombined[[1]],
+                                                      edgesCombined[[2]],
+                                                      outputCrs))
     
-    # If there is a chain of edges between intersections, merge them together
-    timeStep(edgesSimplified <- simplifyLines(combinedUndirectedAndDirected[[1]],
-                                                 combinedUndirectedAndDirected[[2]]))
+      # If there is a chain of edges between intersections, merge them together
+      timeStep(edgesSimplified <- simplifyLines(combinedUndirectedAndDirected[[1]],
+                                                   combinedUndirectedAndDirected[[2]]))
     
-    # Remove dangles
-    timeStep(noDangles <- removeDangles(edgesSimplified[[1]],edgesSimplified[[2]],
-                                           minDangleLinkLengh))
+      # Remove dangles
+      timeStep(noDangles <- removeDangles(edgesSimplified[[1]],edgesSimplified[[2]],
+                                             minDangleLinkLengh))
     
-    # Do a second round of simplification.
-    timeStep(edgesCombined2 <- combineRedundantEdges(noDangles[[1]],
-                                                        noDangles[[2]],
-                                                        outputCrs))
-    timeStep(combinedUndirectedAndDirected2 <- 
-                  combineUndirectedAndDirectedEdges(edgesCombined2[[1]],
-                                                    edgesCombined2[[2]],
-                                                    outputCrs))
+      # Do a second round of simplification.
+      timeStep(edgesCombined2 <- combineRedundantEdges(noDangles[[1]],
+                                                          noDangles[[2]],
+                                                          outputCrs))
+      timeStep(combinedUndirectedAndDirected2 <- 
+                    combineUndirectedAndDirectedEdges(edgesCombined2[[1]],
+                                                      edgesCombined2[[2]],
+                                                      outputCrs))
     
-    timeStep(edgesSimplified2 <- simplifyLines(combinedUndirectedAndDirected2[[1]],
-                                                  combinedUndirectedAndDirected2[[2]]))
-    timeStep(edgesCombined3 <- combineRedundantEdges(edgesSimplified2[[1]],
-                                                        edgesSimplified2[[2]],
-                                                        outputCrs))
+      timeStep(edgesSimplified2 <- simplifyLines(combinedUndirectedAndDirected2[[1]],
+                                                    combinedUndirectedAndDirected2[[2]]))
+      timeStep(edgesCombined3 <- combineRedundantEdges(edgesSimplified2[[1]],
+                                                          edgesSimplified2[[2]],
+                                                          outputCrs))
     
-    networkMode <- addMode(edgesCombined3)
+      networkMode <- addMode(edgesCombined3)
+    
+    } else {
+      networkMode <- addMode(intersectionsSimplified)
+    }
+
+    # ensure transport is a directed routeable graph for each mode (i.e., connected
+    # subgraph). The first function ensures a connected directed subgraph and the
+    # second function ensures a connected subgraph but doesn't consider directionality.
+    # We car and bike modes are directed, but walk is undirected.
+    timeStep(networkNonDisconnected <- largestDirectedNetworkSubgraph(networkMode,'car,bike'))
+    timeStep(networkConnected <- largestNetworkSubgraph(networkNonDisconnected,'walk'))
+  
+    # densify the network so that no residential streets are longer than 500m
+    if (addElevation==T & densifyBikeways==F) message("Consider changing densifyBikeways to true when addElevation is true to get a more accurate slope estimation for bikeways")
+    timeStep(networkDensified <- densifyNetwork(networkConnected,densificationMaxLength,
+                                                densifyBikeways, maxcores))
+  
+    # Adding NDVI to links
+    if(addNDVI) {
+      timeStep(networkDensified[[2]] <- addNDVI2Links(networkDensified[[2]],
+                                                         ndviFile,
+                                                         ndviBuffDist,
+                                                         outputCrs))
+    }
+  
+    # Adding Tree Canopy Cover Percentage to links
+    if(addTreeCanopyCover) {
+      timeStep(networkDensified[[2]] <- addTreeCanopyCover2Links(networkDensified[[2]],
+                                                                    treeCanopyCoverFile,
+                                                                    outputCrs))
+    }
+  
+    # adding destinations layer
+    if (addDestinationLayer) {
+      if (addBendigoData) {
+        timeStep(localDestinations <- getDestinationsBendigo(bendigoParking,
+                                                             bendigoParkingPoly,
+                                                             bendigoParkingLine,
+                                                             bendigoBikeRacks,
+                                                             osmGpkg,
+                                                             outputCrs))
+      } else {
+        localDestinations <- NULL
+      }
+    
+      timeStep(destinations <- addDestinations(networkDensified[[1]],
+                                               networkDensified[[2]],
+                                               osmGpkg,
+                                               city,
+                                               gtfs_feed,
+                                               outputCrs,
+                                               region,
+                                               regionBufferDist,
+                                               localDestinations,
+                                               maxcores))
+    
+      if (addBendigoData) {
+        timeStep(destinations <- addPremiumParkTagBendigo(destinations))
+      }
+    }
+
+    # add node details to links
+    timeStep(networkWithNodeDetails <-
+                  addNodeDetails(networkDensified[[1]],
+                                  networkDensified[[2]]))
+  
+    # add mode to edges, add type to nodes, change cycleway from numbers to text
+    timeStep(networkRestructured <- restructureData(networkWithNodeDetails, highway_lookup,
+                                                    defaults_df))
+  
+    # Increasing capacity for small road segments to avoid bottlenecks
+    # Set adjustCapacity to True if this adjustment is desired
+    if(adjustCapacity) {
+      networkRestructured[[2]] <- networkRestructured[[2]] %>% 
+        mutate(capacity = ifelse(length<adjustCapacityMaxLength,
+                                 capacity*adjustCapacityMultiplier, capacity))
+    }
+  
+    # Adding elevation to nodes and gradient to links
+    if(addElevation){ 
+      timeStep(networkRestructured[[1]] <- addElevation2Nodes(networkRestructured[[1]], 
+                                                              demFile,
+                                                              ElevationMultiplier,
+                                                              outputCrs))
+      timeStep(networkRestructured[[2]] <- addElevation2Links(networkRestructured))
+    }
+  
+    # Make network oneway (required because cycling impedances such as level of 
+    # traffic stress and slope may be different in each direction)
+    echo("Making all links one way\n")
+    timeStep(networkOneway <- makeEdgesOneway(networkRestructured[[1]], 
+                                              networkRestructured[[2]],
+                                              defaults_df))
+    
+    # save the network just before the public transport step, so a build can
+    # be resumed from there with 'startFromCheckpoint'
+    if (saveCheckpoint) {
+      echo(paste("Saving checkpoint,", checkpointSqlite, "\n"))
+      if (file_exists(checkpointSqlite)) st_delete(checkpointSqlite)
+      st_write(networkOneway[[1]], checkpointSqlite, layer = "nodes")
+      st_write(networkOneway[[2]], checkpointSqlite, layer = "links")
+      if (addDestinationLayer) {
+        st_write(destinations, checkpointSqlite, layer = "destinations")
+      }
+    }
     
   } else {
-    networkMode <- addMode(intersectionsSimplified)
-  }
-
-  # ensure transport is a directed routeable graph for each mode (i.e., connected
-  # subgraph). The first function ensures a connected directed subgraph and the
-  # second function ensures a connected subgraph but doesn't consider directionality.
-  # We car and bike modes are directed, but walk is undirected.
-  timeStep(networkNonDisconnected <- largestDirectedNetworkSubgraph(networkMode,'car,bike'))
-  timeStep(networkConnected <- largestNetworkSubgraph(networkNonDisconnected,'walk'))
-  
-  # densify the network so that no residential streets are longer than 500m
-  if (addElevation==T & densifyBikeways==F) message("Consider changing densifyBikeways to true when addElevation is true to get a more accurate slope estimation for bikeways")
-  timeStep(networkDensified <- densifyNetwork(networkConnected,densificationMaxLength,
-                                              densifyBikeways, maxcores))
-  
-  # Adding NDVI to links
-  if(addNDVI) {
-    timeStep(networkDensified[[2]] <- addNDVI2Links(networkDensified[[2]],
-                                                       ndviFile,
-                                                       ndviBuffDist,
-                                                       outputCrs))
-  }
-  
-  # Adding Tree Canopy Cover Percentage to links
-  if(addTreeCanopyCover) {
-    timeStep(networkDensified[[2]] <- addTreeCanopyCover2Links(networkDensified[[2]],
-                                                                  treeCanopyCoverFile,
-                                                                  outputCrs))
-  }
-  
-  # adding destinations layer
-  if (addDestinationLayer) {
-    if (addBendigoData) {
-      timeStep(localDestinations <- getDestinationsBendigo(bendigoParking,
-                                                           bendigoParkingPoly,
-                                                           bendigoParkingLine,
-                                                           bendigoBikeRacks,
-                                                           osmGpkg,
-                                                           outputCrs))
-    } else {
-      localDestinations <- NULL
-    }
-    
-    timeStep(destinations <- addDestinations(networkDensified[[1]],
-                                             networkDensified[[2]],
-                                             osmGpkg,
-                                             city,
-                                             gtfs_feed,
-                                             outputCrs,
-                                             region,
-                                             regionBufferDist,
-                                             localDestinations,
-                                             maxcores))
-    
-    if (addBendigoData) {
-      timeStep(destinations <- addPremiumParkTagBendigo(destinations))
+    echo(paste("Reading in checkpoint,", checkpointSqlite, "\n"))
+    networkOneway <- 
+      list(st_read(checkpointSqlite, layer = "nodes") %>% st_set_geometry("geom"),
+           st_read(checkpointSqlite, layer = "links") %>% st_set_geometry("geom"))
+    if (addDestinationLayer) {
+      destinations <- st_read(checkpointSqlite, layer = "destinations") %>%
+        st_set_geometry("geom")
     }
   }
-
-  # add node details to links
-  timeStep(networkWithNodeDetails <-
-                addNodeDetails(networkDensified[[1]],
-                                networkDensified[[2]]))
-  
-  # add mode to edges, add type to nodes, change cycleway from numbers to text
-  timeStep(networkRestructured <- restructureData(networkWithNodeDetails, highway_lookup,
-                                                  defaults_df))
-  
-  # Increasing capacity for small road segments to avoid bottlenecks
-  # Set adjustCapacity to True if this adjustment is desired
-  if(adjustCapacity) {
-    networkRestructured[[2]] <- networkRestructured[[2]] %>% 
-      mutate(capacity = ifelse(length<adjustCapacityMaxLength,
-                               capacity*adjustCapacityMultiplier, capacity))
-  }
-  
-  # Adding elevation to nodes and gradient to links
-  if(addElevation){ 
-    timeStep(networkRestructured[[1]] <- addElevation2Nodes(networkRestructured[[1]], 
-                                                            demFile,
-                                                            ElevationMultiplier,
-                                                            outputCrs))
-    timeStep(networkRestructured[[2]] <- addElevation2Links(networkRestructured))
-  }
-  
-  # Make network oneway (required because cycling impedances such as level of 
-  # traffic stress and slope may be different in each direction)
-  echo("Making all links one way\n")
-  timeStep(networkOneway <- makeEdgesOneway(networkRestructured[[1]], 
-                                            networkRestructured[[2]],
-                                            defaults_df))
   
   # Adding PT pseudo-network based on GTFS
   # Adjust your analysis date and gtfs feed name above

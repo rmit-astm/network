@@ -34,6 +34,7 @@ The city-specific parameters are as follows.
 | fullExtractLocation | .osm.pbf file | Required if 'extractOsm' and 'useFullExtractHeld' are both set to 'true'.  The location of a file in .osm.pbf file which is already held (instead of downloading the .osm.pbf file) and is to be clipped to the region. |
 | osmGpkg            | .gpkg file     | The location to which an OSM extract in .gpkg format will be saved, or where an existing .gpkg file is stored if already held.|
 | unconfiguredSqlite | .sqlite file   | The location to which an unconfigured network in .sqlite format will be saved, or where an existing unconfigured network is stored if already held.|
+| checkpointSqlite   | .sqlite file   | The location to which the network just before the public transport step (nodes, links and destinations) will be saved if 'saveCheckpoint' is set to 'true', or from which a build starts if 'startFromCheckpoint' is set to 'true'.|
 | cropAreaPoly       | area location  | An optional parameter for cropping the OSM extract to a smaller test area. See https://github.com/JamesChevalier/cities/tree/master/australia/victoria for available locations.  |
 | demFile            | .tif file      | Required if 'addElevation' is set to 'true'.  This must be the location of a digital elevation model raster file.   |
 | ndviFile           | .tif file      | Required if 'addNDVI' is set to 'true'.  This must be the location of a raster file with NDVI values.   |
@@ -64,7 +65,7 @@ source("NetworkGenerator.R")
 makeNetwork("config/melbourne.yml", overrides = list(outputSubdirectory = "example"))
 ```
 
-Overrides are useful for one-off changes, such as resuming a build from the saved OSM intermediates, without editing the config files.
+Overrides are useful for one-off changes, such as resuming a build from the saved OSM intermediates, without editing the config files. A build that saved a checkpoint (`saveCheckpoint=true`) can also be resumed from just before the public transport step, eg `Rscript NetworkGenerator.R config/victoria.yml startFromCheckpoint=true checkpointSqlite=./output/victoria_checkpoint.sqlite`.
 
 Versions up to v1.2 set the parameters in `NetworkGenerator.R` itself and were run with `makeNetwork(city = "Melbourne")`; config files were introduced in v2.0.
 
