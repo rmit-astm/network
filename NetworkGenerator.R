@@ -128,7 +128,7 @@ makeNetwork<-function(configFile, overrides = list()){
   }
   
   # crop to test area if required
-  if(crop2Area)system.time(networkUnconfigured <- crop2Poly(networkUnconfigured,
+  if(crop2Area)timeStep(networkUnconfigured <- crop2Poly(networkUnconfigured,
                                                             cropAreaPoly,
                                                             outputCrs))
   # process OSM metadata
@@ -140,7 +140,7 @@ makeNetwork<-function(configFile, overrides = list()){
   if (simplifyEdges) {
     message("As 'simplifyEdges' is True, OSM 'bike lane project' tags will not be extracted: the edge simplification functions are not configured for them.  If the 'bike lane project' tags are required, set 'simplifyEdges' to False.")
   }
-  system.time( osmAttributes <- processOsmTags(osm_metadata, defaults_df, simplifyEdges))
+  timeStep( osmAttributes <- processOsmTags(osm_metadata, defaults_df, simplifyEdges))
   
   edgesAttributed <- networkUnconfigured[[2]] %>%
     inner_join(osmAttributes, by="osm_id") %>%
@@ -159,7 +159,7 @@ makeNetwork<-function(configFile, overrides = list()){
   largestComponent <- largestConnectedComponent(networkUnconfigured[[1]], edgesAttributed)
 
   # simplify intersections while preserving attributes and original geometry
-  system.time(intersectionsSimplified <- simplifyIntersections(largestComponent[[1]],
+  timeStep(intersectionsSimplified <- simplifyIntersections(largestComponent[[1]],
                                                                largestComponent[[2]],
                                                                shortLinkLength,
                                                                outputCrs))
@@ -172,38 +172,38 @@ makeNetwork<-function(configFile, overrides = list()){
     # * Two-way edges will be merged regardless of direction.
     # * One-way edges will NOT be merged with two-way edges.
     # * Non-car edges do NOT count towards the merged lane count (permlanes)
-    system.time(edgesCombined <- combineRedundantEdges(intersectionsSimplified[[1]],
+    timeStep(edgesCombined <- combineRedundantEdges(intersectionsSimplified[[1]],
                                                        intersectionsSimplified[[2]],
                                                        outputCrs))
     
     # Merge one-way and two-way edges going between the same two nodes. In these 
     # cases, the merged attributes will be two-way.
     # This guarantees that there will only be a single edge between any two nodes.
-    system.time(combinedUndirectedAndDirected <- 
+    timeStep(combinedUndirectedAndDirected <- 
                   combineUndirectedAndDirectedEdges(edgesCombined[[1]],
                                                     edgesCombined[[2]],
                                                     outputCrs))
     
     # If there is a chain of edges between intersections, merge them together
-    system.time(edgesSimplified <- simplifyLines(combinedUndirectedAndDirected[[1]],
+    timeStep(edgesSimplified <- simplifyLines(combinedUndirectedAndDirected[[1]],
                                                  combinedUndirectedAndDirected[[2]]))
     
     # Remove dangles
-    system.time(noDangles <- removeDangles(edgesSimplified[[1]],edgesSimplified[[2]],
+    timeStep(noDangles <- removeDangles(edgesSimplified[[1]],edgesSimplified[[2]],
                                            minDangleLinkLengh))
     
     # Do a second round of simplification.
-    system.time(edgesCombined2 <- combineRedundantEdges(noDangles[[1]],
+    timeStep(edgesCombined2 <- combineRedundantEdges(noDangles[[1]],
                                                         noDangles[[2]],
                                                         outputCrs))
-    system.time(combinedUndirectedAndDirected2 <- 
+    timeStep(combinedUndirectedAndDirected2 <- 
                   combineUndirectedAndDirectedEdges(edgesCombined2[[1]],
                                                     edgesCombined2[[2]],
                                                     outputCrs))
     
-    system.time(edgesSimplified2 <- simplifyLines(combinedUndirectedAndDirected2[[1]],
+    timeStep(edgesSimplified2 <- simplifyLines(combinedUndirectedAndDirected2[[1]],
                                                   combinedUndirectedAndDirected2[[2]]))
-    system.time(edgesCombined3 <- combineRedundantEdges(edgesSimplified2[[1]],
+    timeStep(edgesCombined3 <- combineRedundantEdges(edgesSimplified2[[1]],
                                                         edgesSimplified2[[2]],
                                                         outputCrs))
     
@@ -227,7 +227,7 @@ makeNetwork<-function(configFile, overrides = list()){
   
   # Adding NDVI to links
   if(addNDVI) {
-    system.time(networkDensified[[2]] <- addNDVI2Links(networkDensified[[2]],
+    timeStep(networkDensified[[2]] <- addNDVI2Links(networkDensified[[2]],
                                                        ndviFile,
                                                        ndviBuffDist,
                                                        outputCrs))
@@ -235,7 +235,7 @@ makeNetwork<-function(configFile, overrides = list()){
   
   # Adding Tree Canopy Cover Percentage to links
   if(addTreeCanopyCover) {
-    system.time(networkDensified[[2]] <- addTreeCanopyCover2Links(networkDensified[[2]],
+    timeStep(networkDensified[[2]] <- addTreeCanopyCover2Links(networkDensified[[2]],
                                                                   treeCanopyCoverFile,
                                                                   outputCrs))
   }
@@ -276,7 +276,7 @@ makeNetwork<-function(configFile, overrides = list()){
   }
 
   # add node details to links
-  system.time(networkWithNodeDetails <-
+  timeStep(networkWithNodeDetails <-
                 addNodeDetails(networkDensified[[1]],
                                 networkDensified[[2]]))
   
@@ -310,7 +310,7 @@ makeNetwork<-function(configFile, overrides = list()){
   # Adding PT pseudo-network based on GTFS
   # Adjust your analysis date and gtfs feed name above
   if (addGtfs) {
-    system.time(
+    timeStep(
       networkOneway[[2]] <- addGtfsLinks(outputLocation = paste0(outputDir,"/pt/"),
                                          nodes = networkOneway[[1]], 
                                          links = networkOneway[[2]],
@@ -357,7 +357,7 @@ makeNetwork<-function(configFile, overrides = list()){
   # Simplify appearance of links to avoid short segments (using
   # douglas-peucker algorithm) but ensure that endpoints remain unchanged
   if (simplifyAppearance) {
-    system.time(networkOneway[[2]] <- simplifyLinkAppearance(networkOneway[[2]],
+    timeStep(networkOneway[[2]] <- simplifyLinkAppearance(networkOneway[[2]],
                                                              dTolerance = 20))
   }
 
@@ -381,9 +381,9 @@ makeNetwork<-function(configFile, overrides = list()){
   echo("|               **Launching Output Writing**           |\n")
   echo("--------------------------------------------------------\n")
   
-  if(writeSqlite) system.time(exportSQlite(networkFinal, outputDir, outputCrs))
-  if(writeShp) system.time(exportShp(networkFinal, outputDir, outputCrs))
-  if(writeXml) system.time(exportXML(networkFinal, outputDir)) 
+  if(writeSqlite) timeStep(exportSQlite(networkFinal, outputDir, outputCrs))
+  if(writeShp) timeStep(exportShp(networkFinal, outputDir, outputCrs))
+  if(writeXml) timeStep(exportXML(networkFinal, outputDir)) 
 }
 
 ## JUST FOR TESTING
