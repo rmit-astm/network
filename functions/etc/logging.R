@@ -16,5 +16,6 @@ timeStep <- function(expr) {
   step <- substitute(expr)
   if (is.call(step) && identical(step[[1]], as.name("<-"))) step <- step[[3]]
   elapsed <- system.time(expr)[["elapsed"]]
-  echo(sprintf("%s took %.1f min\n", deparse(step[[1]]), elapsed / 60))
+  took <- if (elapsed < 60) sprintf("%.1f s", elapsed) else sprintf("%.1f min", elapsed / 60)
+  echo(paste0(deparse(step[[1]]), " took ", took, "\n"))
 }
