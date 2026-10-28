@@ -61,15 +61,13 @@ densifyNetwork <- function(networkList, minimum_length=400, densifyBikeways=F,
     st_geometry()
   
   # cut each link at its segment nodes, in chunks of links in parallel
-  cores <- detectCores()
-  if (!is.na(maxcores)) cores <- min(cores, maxcores)
+  cluster <- startCluster(maxcores)
+  cores <- length(cluster)
+  # stop the cluster if this function exits early with an error
+  on.exit(try(stopCluster(cluster), silent = TRUE), add = TRUE)
   chunks <- split(seq_along(links_list),
                   cut(seq_along(links_list), min(cores * 10, length(links_list)),
                       labels = FALSE))
-  cluster <- parallel::makeCluster(cores)
-  doSNOW::registerDoSNOW(cluster)
-  # stop the cluster if this function exits early with an error
-  on.exit(try(stopCluster(cluster), silent = TRUE), add = TRUE)
   pb <- txtProgressBar(max = length(chunks), style = 3)
   progress <- function(n) setTxtProgressBar(pb, n)
   opts <- list(progress = progress)

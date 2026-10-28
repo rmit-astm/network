@@ -294,10 +294,8 @@ processGtfs <- function(outputLocation = "./output/generated_network/pt/",
   # snapping the stops to the nearest node in the road network
   # for bus - nearest valid node on the nearest link
   # setup for parallel processing and progress reporting
-  cores <- detectCores()
-  if (!is.na(maxcores)) cores <- min(cores, maxcores)
-  cluster <- parallel::makeCluster(cores)
-  doSNOW::registerDoSNOW(cluster)
+  cluster <- startCluster(maxcores)
+  cores <- length(cluster)
   # stop the cluster if this function exits early with an error
   on.exit(try(stopCluster(cluster), silent = TRUE), add = TRUE)
   pb <- txtProgressBar(max = max(nrow(validStopsBus), 2), style = 3)
@@ -810,10 +808,8 @@ findNodePairRoutes <- function(stopTimes,
                             directed = T)
     
     # setup for parallel processing and progress reporting
-    cores <- detectCores()
-    if (!is.na(maxcores)) cores <- min(cores, maxcores)
-    cluster <- parallel::makeCluster(cores)
-    doSNOW::registerDoSNOW(cluster)
+    cluster <- startCluster(maxcores)
+    cores <- length(cluster)
     # stop the cluster if this function exits early with an error
     on.exit(try(stopCluster(cluster), silent = TRUE), add = TRUE)
     pb <- txtProgressBar(max = max(nrow(nodePairs), 2), style = 3)

@@ -268,10 +268,8 @@ addDestinations <- function(nodes_current,
   }
   
   # setup for parallel processing and progress reporting
-  cores <- detectCores()
-  if (!is.na(maxcores)) cores <- min(cores, maxcores)
-  cluster <- parallel::makeCluster(cores)
-  doSNOW::registerDoSNOW(cluster)
+  cluster <- startCluster(maxcores)
+  cores <- length(cluster)
   # stop the cluster if this function exits early with an error
   on.exit(try(stopCluster(cluster), silent = TRUE), add = TRUE)
   pb <- txtProgressBar(max = nrow(dest.large.poly), style = 3)
