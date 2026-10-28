@@ -78,22 +78,22 @@ makeNetwork<-function(configFile, overrides = list()){
   # Extracting OSM
   if (extractOsm) {
     echo(paste0("Extracting OSM for ", city, "\n"))
-    getOsmExtract(region, surroundingRegion, outputCrs,
-                  regionBufferDist, osmGpkg, retainDownload,
-                  useFullExtractHeld, fullExtractLocation)
+    timeStep(getOsmExtract(region, surroundingRegion, outputCrs,
+                           regionBufferDist, osmGpkg, retainDownload,
+                           useFullExtractHeld, fullExtractLocation))
   }
 
   # Downloading GTFS feed (used for the PT network and for PT stop destinations)
   if (downloadGtfs & (addGtfs | addDestinationLayer)) {
-    getGtfsFeed(gtfsUrl, gtfsBundle, gtfs_feed, gtfsNested, gtfsFolders,
-                retainGtfsDownload)
+    timeStep(getGtfsFeed(gtfsUrl, gtfsBundle, gtfs_feed, gtfsNested, gtfsFolders,
+                         retainGtfsDownload))
   }
 
   # Processing OSM, or loading existing layers if not required
   if(networkFromOsm) {
     echo(paste0("Starting to process osm extract file, ", osmGpkg, "\n"))
-    networkUnconfiguredOutputs <- processOsm(osmGpkg, region, regionBufferDist, 
-                                             outputCrs, maxcores)
+    timeStep(networkUnconfiguredOutputs <- processOsm(osmGpkg, region, regionBufferDist, 
+                                                      outputCrs, maxcores))
     
     if (saveUnconfigured) {
       if (file_exists(unconfiguredSqlite)) st_delete(unconfiguredSqlite)
@@ -152,12 +152,12 @@ makeNetwork<-function(configFile, overrides = list()){
   # contains main roads only, and simplification can extend contraflow lanes for 
   # very long distances along them)
   if (simplifyEdges & surroundingRegion != region) {
-    edgesAttributed <- confineContrabikeToRegion(edgesAttributed, region,
-                                                 regionBufferDist, outputCrs)
+    timeStep(edgesAttributed <- confineContrabikeToRegion(edgesAttributed, region,
+                                                          regionBufferDist, outputCrs))
   }
 
   # keep only the largest connected component
-  largestComponent <- largestConnectedComponent(networkUnconfigured[[1]], edgesAttributed)
+  timeStep(largestComponent <- largestConnectedComponent(networkUnconfigured[[1]], edgesAttributed))
 
   # simplify intersections while preserving attributes and original geometry
   timeStep(intersectionsSimplified <- simplifyIntersections(largestComponent[[1]],
@@ -218,13 +218,13 @@ makeNetwork<-function(configFile, overrides = list()){
   # subgraph). The first function ensures a connected directed subgraph and the
   # second function ensures a connected subgraph but doesn't consider directionality.
   # We car and bike modes are directed, but walk is undirected.
-  networkNonDisconnected <- largestDirectedNetworkSubgraph(networkMode,'car,bike')
-  networkConnected <- largestNetworkSubgraph(networkNonDisconnected,'walk')
+  timeStep(networkNonDisconnected <- largestDirectedNetworkSubgraph(networkMode,'car,bike'))
+  timeStep(networkConnected <- largestNetworkSubgraph(networkNonDisconnected,'walk'))
   
   # densify the network so that no residential streets are longer than 500m
   if (addElevation==T & densifyBikeways==F) message("Consider changing densifyBikeways to true when addElevation is true to get a more accurate slope estimation for bikeways")
-  networkDensified <- densifyNetwork(networkConnected,densificationMaxLength,
-                                     densifyBikeways, maxcores)
+  timeStep(networkDensified <- densifyNetwork(networkConnected,densificationMaxLength,
+                                              densifyBikeways, maxcores))
   
   # Adding NDVI to links
   if(addNDVI) {
@@ -245,12 +245,12 @@ makeNetwork<-function(configFile, overrides = list()){
   if (addDestinationLayer) {
     if (city == "Bendigo") {
       if (addBendigoData) {
-        localDestinations <- getDestinationsBendigo(bendigoParking,
-                                                    bendigoParkingPoly,
-                                                    bendigoParkingLine,
-                                                    bendigoBikeRacks,
-                                                    osmGpkg,
-                                                    outputCrs)
+        timeStep(localDestinations <- getDestinationsBendigo(bendigoParking,
+                                                             bendigoParkingPoly,
+                                                             bendigoParkingLine,
+                                                             bendigoBikeRacks,
+                                                             osmGpkg,
+                                                             outputCrs))
       } else {
         localDestinations <- NULL
       }
@@ -258,20 +258,20 @@ makeNetwork<-function(configFile, overrides = list()){
       localDestinations <- NULL
     }
     
-    destinations <- addDestinations(networkDensified[[1]],
-                                    networkDensified[[2]],
-                                    osmGpkg,
-                                    city,
-                                    gtfs_feed,
-                                    outputCrs,
-                                    region,
-                                    regionBufferDist,
-                                    localDestinations,
-                                    maxcores)
+    timeStep(destinations <- addDestinations(networkDensified[[1]],
+                                             networkDensified[[2]],
+                                             osmGpkg,
+                                             city,
+                                             gtfs_feed,
+                                             outputCrs,
+                                             region,
+                                             regionBufferDist,
+                                             localDestinations,
+                                             maxcores))
     
     if (city == "Bendigo") {
       if (addBendigoData) {
-        destinations <- addPremiumParkTagBendigo(destinations)
+        timeStep(destinations <- addPremiumParkTagBendigo(destinations))
       } 
     }
   }
@@ -282,8 +282,8 @@ makeNetwork<-function(configFile, overrides = list()){
                                 networkDensified[[2]]))
   
   # add mode to edges, add type to nodes, change cycleway from numbers to text
-  networkRestructured <- restructureData(networkWithNodeDetails, highway_lookup,
-                                         defaults_df)
+  timeStep(networkRestructured <- restructureData(networkWithNodeDetails, highway_lookup,
+                                                  defaults_df))
   
   # Doubling capacity for small road segments to avoid bottlenecks
   # Set adjustCapacity to True if this adjustment is desired
@@ -294,19 +294,19 @@ makeNetwork<-function(configFile, overrides = list()){
   
   # Adding elevation to nodes and gradient to links
   if(addElevation){ 
-    networkRestructured[[1]] <- addElevation2Nodes(networkRestructured[[1]], 
-                                                   demFile,
-                                                   ElevationMultiplier,
-                                                   outputCrs)
-    networkRestructured[[2]] <- addElevation2Links(networkRestructured)
+    timeStep(networkRestructured[[1]] <- addElevation2Nodes(networkRestructured[[1]], 
+                                                            demFile,
+                                                            ElevationMultiplier,
+                                                            outputCrs))
+    timeStep(networkRestructured[[2]] <- addElevation2Links(networkRestructured))
   }
   
   # Make network oneway (required because cycling impedances such as level of 
   # traffic stress and slope may be different in each direction)
   echo("Making all links one way\n")
-  networkOneway <- makeEdgesOneway(networkRestructured[[1]], 
-                                   networkRestructured[[2]],
-                                   defaults_df)
+  timeStep(networkOneway <- makeEdgesOneway(networkRestructured[[1]], 
+                                            networkRestructured[[2]],
+                                            defaults_df))
   
   # Adding PT pseudo-network based on GTFS
   # Adjust your analysis date and gtfs feed name above
@@ -328,30 +328,30 @@ makeNetwork<-function(configFile, overrides = list()){
   
   # Adding school time speed zones to links
   if (addSchoolZones) {
-    networkOneway[[2]] <- addSchoolSpeedZones(networkOneway[[2]],
-                                              schoolZoneFile,
-                                              outputCrs)
+    timeStep(networkOneway[[2]] <- addSchoolSpeedZones(networkOneway[[2]],
+                                                       schoolZoneFile,
+                                                       outputCrs))
   }
   
   # Adding Bendigo 'everyday routes' and 'proposed protected routes' as link attributes
   if (city == "Bendigo") {
     if (addBendigoData) {
-      networkOneway[[2]] <- addBendigoEverydayRoutes(networkOneway[[1]],
-                                                     networkOneway[[2]],
-                                                     bendigoEverydayRoutes,
-                                                     bendigoExistingProtected,
-                                                     outputCrs,
-                                                     maxcores)
-      networkOneway[[2]] <- 
-        addBendigoProposedProtected(networkOneway[[1]],
-                                    networkOneway[[2]],
-                                    bendigoProposedProtected,
-                                    defaults_df,
-                                    addNDVI, ndviFile, ndviBuffDist, 
-                                    addTreeCanopyCover, treeCanopyCoverFile,
-                                    addElevation,
-                                    outputCrs,
-                                    maxcores) 
+      timeStep(networkOneway[[2]] <- addBendigoEverydayRoutes(networkOneway[[1]],
+                                                              networkOneway[[2]],
+                                                              bendigoEverydayRoutes,
+                                                              bendigoExistingProtected,
+                                                              outputCrs,
+                                                              maxcores))
+      timeStep(networkOneway[[2]] <- 
+                 addBendigoProposedProtected(networkOneway[[1]],
+                                             networkOneway[[2]],
+                                             bendigoProposedProtected,
+                                             defaults_df,
+                                             addNDVI, ndviFile, ndviBuffDist, 
+                                             addTreeCanopyCover, treeCanopyCoverFile,
+                                             addElevation,
+                                             outputCrs,
+                                             maxcores)) 
     }
   }
   
@@ -367,9 +367,9 @@ makeNetwork<-function(configFile, overrides = list()){
   # Note 'excludeInadequateLanes' will treat on-road cycle lanes as mixed traffic
   #   if they are too narrow or shared with parking, but only if OSM 'bike lane 
   #   project' tags are present
-  networkOneway <- addLTSAssumedTraffic(list(networkOneway[[1]], 
-                                             networkOneway[[2]]),
-                                        excludeInadequateLanes = T)
+  timeStep(networkOneway <- addLTSAssumedTraffic(list(networkOneway[[1]], 
+                                                      networkOneway[[2]]),
+                                                 excludeInadequateLanes = T))
   
   networkFinal <- networkOneway
   
