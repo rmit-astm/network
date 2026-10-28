@@ -7,8 +7,10 @@
 # typical service day.
 #
 # Note: like the downstream filtering in gtfs2PtNetwork.R, this uses the weekly
-# 'calendar' table; feeds that rely only on 'calendar_dates' are not supported and
-# will need 'analysis_date' set explicitly.
+# 'calendar' table, with the 'calendar_dates' exceptions for each date (so a date
+# with services removed, such as a holiday, is not chosen); feeds that rely only
+# on 'calendar_dates' are not supported and will need 'analysis_date' set
+# explicitly.
 
 chooseAnalysisDate <- function(gtfs,
                                preferredWeekdays = c("wednesday", "tuesday",
@@ -30,6 +32,13 @@ chooseAnalysisDate <- function(gtfs,
   start <- asDate(cal$start_date)
   end   <- asDate(cal$end_date)
 
+  # services added (exception_type 1) or removed (2) on particular dates
+  exceptions <- gtfs$calendar_dates
+  if (is.null(exceptions)) exceptions <- data.frame(service_id = character(0),
+                                                    date = character(0),
+                                                    exception_type = integer(0))
+  exceptionDates <- asDate(exceptions$date)
+
   # candidate dates across the whole service window
   candidateDates <- seq(min(start, na.rm = TRUE), max(end, na.rm = TRUE), by = "day")
   # weekday of each candidate, matching the calendar's English column names
@@ -41,7 +50,11 @@ chooseAnalysisDate <- function(gtfs,
     theseDates <- candidateDates[weekdayName == day]
     if (length(theseDates) == 0) next
     counts <- vapply(theseDates, function(d) {
-      sum(start <= d & end >= d & cal[[day]] == 1, na.rm = TRUE)
+      weekly <- cal$service_id[which(start <= d & end >= d & cal[[day]] == 1)]
+      onDate <- which(exceptionDates == d)
+      removed <- exceptions$service_id[onDate][exceptions$exception_type[onDate] == 2]
+      added <- exceptions$service_id[onDate][exceptions$exception_type[onDate] == 1]
+      length(union(setdiff(weekly, removed), added))
     }, numeric(1))
     if (max(counts) > 0) {
       # most-served date of this weekday; if tied, the middle one (avoids edges)
