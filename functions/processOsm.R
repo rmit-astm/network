@@ -312,9 +312,12 @@ processOsm <- function(osmGpkg, region, regionBufferDist = 10000,
   # separate final paths and osm metadata
   # -----------------------------------#
   
-  # remove metadata from final paths
+  # remove metadata from final paths (as a plain sf object, not also a
+  # data.table, so it is the same as when read back from the saved network)
   final.paths <- final.paths.with.metadata %>%
-    dplyr::select(osm_id, length, from_id, to_id)
+    dplyr::select(osm_id, length, from_id, to_id) %>%
+    as.data.frame() %>%
+    st_sf()
   
   # extract the non-spatial data for the paths
   osm.metadata <- paths %>%
