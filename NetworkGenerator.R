@@ -224,7 +224,7 @@ makeNetwork<-function(configFile, overrides = list()){
   # densify the network so that no residential streets are longer than 500m
   if (addElevation==T & densifyBikeways==F) message("Consider changing densifyBikeways to true when addElevation is true to get a more accurate slope estimation for bikeways")
   networkDensified <- densifyNetwork(networkConnected,densificationMaxLength,
-                                     densifyBikeways)
+                                     densifyBikeways, maxcores)
   
   # Adding NDVI to links
   if(addNDVI) {
