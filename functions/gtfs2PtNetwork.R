@@ -677,9 +677,15 @@ nearestNodeOnNearestLink <- function(stops, nodes, links) {
   }
   from <- endNode(nearestLink$from_id)
   to <- endNode(nearestLink$to_id)
-  # on a tie, take the node that comes first in 'nodes'
-  useFrom <- from$d < to$d | (from$d == to$d & from$row < to$row)
-  return(nodes[ifelse(useFrom, from$row, to$row), ])
+  nearestRow <- ifelse(from$d < to$d, from$row, to$row)
+  # where both end nodes are the same distance away, keep the node that
+  # st_nearest_feature picks, so the result matches snapping one stop at a time
+  ties <- which(from$d == to$d & from$row != to$row)
+  for (i in ties) {
+    rows <- sort(c(from$row[i], to$row[i]))
+    nearestRow[i] <- rows[st_nearest_feature(stops[i, ], nodes[rows, ])]
+  }
+  return(nodes[nearestRow, ])
 }
 
 

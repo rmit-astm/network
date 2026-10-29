@@ -13,7 +13,8 @@ test_that("Bus stops snap to the nearer eligible end node of their nearest link"
 
   snapped <- nearestNodeOnNearestLink(stops, nodes, links)
   # node 5 is not in 'nodes', so the stop near it goes to node 3; the stop
-  # halfway along the first link goes to node 1, which comes first in 'nodes'
-  expect_equal(snapped$id, c(2, 1, 3, 1))
+  # halfway along the first link goes to the node st_nearest_feature picks
+  tied <- nodes$id[1:2][st_nearest_feature(stops[4, ], nodes[1:2, ])]
+  expect_equal(snapped$id, c(2, 1, 3, tied))
   expect_equal(nrow(nearestNodeOnNearestLink(stops[0, ], nodes, links)), 0)
 })
