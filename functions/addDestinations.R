@@ -259,16 +259,19 @@ addDestinations <- function(nodes_current,
     dplyr::select(id, dest_id)
   
   # pseudo entry points
-  # buffered links
-  links.cycle.buffered <- st_buffer(links.cycle, 30)
-  links.walk.buffered <- st_buffer(links.walk, 30)
-  links.car.buffered <- st_buffer(links.car, 30)
+  # whether points are within a distance of any of the links, from the distance
+  # to their nearest link (buffering the links instead uses too much memory for
+  # large networks, such as all of Victoria)
+  nearLinks <- function(points, links, dist) {
+    nearest <- st_nearest_feature(points, links)
+    as.numeric(st_distance(points, st_geometry(links)[nearest], by_element = TRUE)) <= dist
+  }
   
   # setup for parallel processing and progress reporting
-  cores <- detectCores()
-  if (!is.na(maxcores)) cores <- min(cores, maxcores)
-  cluster <- parallel::makeCluster(cores)
-  doSNOW::registerDoSNOW(cluster)
+  cluster <- startCluster(maxcores)
+  cores <- length(cluster)
+  # stop the cluster if this function exits early with an error
+  on.exit(try(stopCluster(cluster), silent = TRUE), add = TRUE)
   pb <- txtProgressBar(max = nrow(dest.large.poly), style = 3)
   progress <- function(n) setTxtProgressBar(pb, n)
   opts <- list(progress = progress)
@@ -297,6 +300,10 @@ addDestinations <- function(nodes_current,
               return(dest.boundary.points)
             }
   
+  # close the progress bar and cluster
+  close(pb)
+  stopCluster(cluster)
+  
   # convert the list of boundary points into a dataframe
   # extract coordinates and ids (row numbers, corresponding to dest.large.poly rows)
   coordinates <- lapply(boundary.points, function(x) st_coordinates(x[[1]]))
@@ -313,89 +320,53 @@ addDestinations <- function(nodes_current,
   # pseudo entry points with nodes
   pseudo.entry.nodes.cycle <- boundary.sf %>%
     # keep only those within 30m of cyclable links
-    st_filter(links.cycle.buffered, .predicate = st_intersects) %>%
+    filter(nearLinks(., links.cycle, 30)) %>%
     # nearest nodes to the entry points
     mutate(node_cycle = nodes.cycle$id[st_nearest_feature(., nodes.cycle)]) %>%
     st_drop_geometry()
   
   pseudo.entry.nodes.walk <- boundary.sf %>%
     # keep only those within 30m of walkable links
-    st_filter(links.walk.buffered, .predicate = st_intersects) %>%
+    filter(nearLinks(., links.walk, 30)) %>%
     # nearest nodes to the entry points
     mutate(node_walk = nodes.walk$id[st_nearest_feature(., nodes.walk)]) %>%
     st_drop_geometry()
   
   pseudo.entry.nodes.car <- boundary.sf %>%
     # keep only those within 30m of driveable links
-    st_filter(links.car.buffered, .predicate = st_intersects) %>%
+    filter(nearLinks(., links.car, 30)) %>%
     # nearest nodes to the entry points
     mutate(node_car = nodes.car$id[st_nearest_feature(., nodes.car)]) %>%
     st_drop_geometry()
   
-  # loop through large destination polygons, find their internal and pseudo entry
-  # nodes (and fallback nearest node), and combine
-  echo(paste("Assembling entry points for", nrow(dest.large.poly), 
-             "parks and schools; parallel processing with", cores, "cores\n"))
+  # find the internal and pseudo entry nodes of each large destination polygon
+  # (and fallback nearest node), and combine; done for all the polygons at once,
+  # as a parallel loop copies the whole network's nodes to every worker
+  echo(paste("Assembling entry points for", nrow(dest.large.poly), "parks and schools\n"))
   
-  # loop to assemble entry nodes
-  dest.large.poly.with.nodes <-
-    foreach(i = 1:nrow(dest.large.poly),
-            # foreach(i = 1:8,
-            .combine = rbind,
-            .packages = c("dplyr"),
-            .options.snow = opts) %dopar% {
-              
-              dest <- dest.large.poly[i,]
-              
-              # nodes within features (identifier is 'dest_id')
-              dest.internal.nodes.cycle <- internal.nodes.cycle %>%
-                filter(dest_id == dest$dest_id) %>%
-                .$id
-              dest.internal.nodes.walk <- internal.nodes.walk %>%
-                filter(dest_id == dest$dest_id) %>%
-                .$id
-              dest.internal.nodes.car <- internal.nodes.car %>%
-                filter(dest_id == dest$dest_id) %>%
-                .$id
-               
-              # pseudo entry nodes (identifier is 'id', which is row number)
-              dest.pseudo.entry.nodes.cycle <- pseudo.entry.nodes.cycle %>%
-                filter(id == i) %>%
-                .$node_cycle
-              dest.pseudo.entry.nodes.walk <- pseudo.entry.nodes.walk %>%
-                filter(id == i) %>%
-                .$node_walk
-              dest.pseudo.entry.nodes.car <- pseudo.entry.nodes.car %>%
-                filter(id == i) %>%
-                .$node_car
-              
-              # combined nodes
-              entry.nodes.cycle <- unique(c(dest.internal.nodes.cycle, dest.pseudo.entry.nodes.cycle))
-              entry.nodes.walk <- unique(c(dest.internal.nodes.walk, dest.pseudo.entry.nodes.walk))
-              entry.nodes.car <- unique(c(dest.internal.nodes.car, dest.pseudo.entry.nodes.car))
-              
-              # fallback if no internal or pseudo entry nodes
-              if (length(entry.nodes.cycle) == 0) {
-                entry.nodes.cycle <- nodes.cycle$id[st_nearest_feature(dest, nodes.cycle)]
-              }
-              if (length(entry.nodes.walk) == 0) {
-                entry.nodes.walk <- nodes.walk$id[st_nearest_feature(dest, nodes.walk)]
-              }
-              if (length(entry.nodes.car) == 0) {
-                entry.nodes.car <- nodes.car$id[st_nearest_feature(dest, nodes.car)]
-              }
-              
-              # convert the entry nodes to strings, and add to the dest row
-              dest$node_cycle <- toString(entry.nodes.cycle)
-              dest$node_walk <- toString(entry.nodes.walk)
-              dest$node_car <- toString(entry.nodes.car)
-              
-              return(dest)
-            }
+  entryNodes <- function(internal.nodes, pseudo.entry.nodes, nodes) {
+    # nodes within features (identifier is 'dest_id'), then pseudo entry nodes
+    # (identifier is 'id', which is row number), grouped by row number
+    rows <- c(match(internal.nodes$dest_id, dest.large.poly$dest_id),
+              pseudo.entry.nodes$id)
+    entry.nodes <- split(c(internal.nodes$id, pseudo.entry.nodes[[2]]),
+                         factor(rows, levels = seq_len(nrow(dest.large.poly))))
+    entry.nodes <- lapply(entry.nodes, unique)
+    
+    # fallback if no internal or pseudo entry nodes
+    none <- which(lengths(entry.nodes) == 0)
+    if (length(none) > 0) {
+      entry.nodes[none] <- nodes$id[st_nearest_feature(dest.large.poly[none, ], nodes)]
+    }
+    
+    # convert the entry nodes to strings
+    return(sapply(entry.nodes, toString, USE.NAMES = FALSE))
+  }
   
-  # close the progress bar and cluster
-  close(pb)
-  stopCluster(cluster)
+  dest.large.poly.with.nodes <- dest.large.poly %>%
+    mutate(node_cycle = entryNodes(internal.nodes.cycle, pseudo.entry.nodes.cycle, nodes.cycle),
+           node_walk = entryNodes(internal.nodes.walk, pseudo.entry.nodes.walk, nodes.walk),
+           node_car = entryNodes(internal.nodes.car, pseudo.entry.nodes.car, nodes.car))
   
   
   # combine all destinations for output ----

@@ -1,0 +1,30 @@
+# Test build, used by 'tests/testthat': a small network (central Melbourne,
+# 2km x 2km) built from a saved unconfigured network, so it needs no downloads
+# or raster files. Merged over 'config/default.yml'.
+city: Test
+outputSubdirectory: test
+maxcores: 2
+
+region:
+  region: ./tests/data/test_region.sqlite
+  surroundingRegion: ./tests/data/test_region.sqlite
+
+osm:
+  extractOsm: false
+  networkFromOsm: false
+  unconfiguredSqlite: ./tests/data/test_network_unconfigured.sqlite
+
+elevation:
+  addElevation: false
+
+destinations:
+  addDestinationLayer: false
+
+treeCanopyCover:
+  addTreeCanopyCover: false
+
+schoolZones:
+  addSchoolZones: false
+
+gtfs:
+  addGtfs: false

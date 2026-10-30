@@ -120,10 +120,28 @@ processGtfs <- function(outputLocation = "./output/generated_network/pt/",
   validCalendar <- gtfs$calendar %>%
     filter(start_date<=analysis_date & end_date>=analysis_date) %>%
     filter(.data[[analysis_day]] == 1)
-
+  validServiceIds <- validCalendar$service_id
+  
+  # apply calendar_dates exceptions for the analysis date: exception_type 1 adds
+  # a service on that date, 2 removes it (eg public holidays, or a timetable
+  # replaced for that week). Dates are compared as YYYYMMDD strings so this
+  # works whether they were read as Date or integer.
+  if (!is.null(gtfs$calendar_dates) && nrow(gtfs$calendar_dates) > 0) {
+    ymd <- function(x) if (inherits(x, "Date")) format(x, "%Y%m%d") else as.character(x)
+    exceptions <- gtfs$calendar_dates %>%
+      filter(ymd(date) == ymd(analysis_date))
+    removedServices <- exceptions$service_id[exceptions$exception_type == 2]
+    addedServices <- exceptions$service_id[exceptions$exception_type == 1]
+    validServiceIds <- union(setdiff(validServiceIds, removedServices), addedServices)
+    echo(paste0("calendar_dates for ", ymd(analysis_date), ": removed ",
+                length(intersect(removedServices, validCalendar$service_id)),
+                " services, added ", length(setdiff(addedServices, validCalendar$service_id)),
+                " services\n"))
+  }
+  
   # trips during within the time period
   validTrips <- gtfs$trips %>%
-    filter(service_id %in% validCalendar$service_id) %>%
+    filter(service_id %in% validServiceIds) %>%
     dplyr::select(route_id,service_id,trip_id) %>%
     mutate(route_id=as.factor(route_id))
   
@@ -275,43 +293,8 @@ processGtfs <- function(outputLocation = "./output/generated_network/pt/",
 
   # snapping the stops to the nearest node in the road network
   # for bus - nearest valid node on the nearest link
-  # setup for parallel processing and progress reporting
-  cores <- detectCores()
-  if (!is.na(maxcores)) cores <- min(cores, maxcores)
-  cluster <- parallel::makeCluster(cores)
-  doSNOW::registerDoSNOW(cluster)
-  pb <- txtProgressBar(max = max(nrow(validStopsBus), 2), style = 3)
-  progress <- function(n) setTxtProgressBar(pb, n)
-  opts <- list(progress = progress)
-  
-  # report
-  echo(paste("Finding nearest node on nearest link for", nrow(validStopsBus), "bus stops;",
-             "parallel processing with", cores, "cores\n"))
-  
-  # loop to find list of boundary points
-  nearestNodeBus <-
-    foreach(i = 1:nrow(validStopsBus),
-            # foreach(i = 1:10,
-            .combine = rbind,
-            .packages = c("dplyr", "sf"),
-            .options.snow = opts) %dopar% {
-              
-              stop <- validStopsBus[i,]
-              # nearest link (which must contain a NetworkNode) to the stop
-              nearest.link <- networkLinksBus[st_nearest_feature(stop, networkLinksBus), ]
-              # the link's NetworkNodes
-              eligible.nodes <- networkNodesBus %>%
-                filter(id == nearest.link$from_id | id == nearest.link$to_id)
-              # nearest of the link's NetworkNodes to the stop
-              nearest.node <- networkNodesBus %>%
-                filter(id == eligible.nodes$id[st_nearest_feature(stop, eligible.nodes)])
-              
-              return(nearest.node)
-            }
-  
-  # close the progress bar and cluster
-  close(pb)
-  stopCluster(cluster)
+  echo(paste("Finding nearest node on nearest link for", nrow(validStopsBus), "bus stops\n"))
+  nearestNodeBus <- nearestNodeOnNearestLink(validStopsBus, networkNodesBus, networkLinksBus)
 
   # otherwise - nearest valid node
   nearestNodeIdOther <- st_nearest_feature(validStopsOther, networkNodes)
@@ -622,165 +605,8 @@ exportGtfsSchedule <- function(links,
     3  , "tram"       , 16    , 50           , 30     , "0.0"      , "0.0"      , 0.25
   )
 
-  echo("writing transitVehicles.xml\n")
-  outxml<-paste0(outputLocation,"transitVehicles.xml")
-  # transitVehicles
-  cat(
-    "<?xml version=\"1.0\" ?>
-<vehicleDefinitions xmlns=\"http://www.matsim.org/files/dtd\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://www.matsim.org/files/dtd http://www.matsim.org/files/dtd/vehicleDefinitions_v1.0.xsd\">\n",
-    file=outxml,append=FALSE)
-  str<-""
-  writeInterval<-500
-  processed<-0
-  for (i in 1:nrow(vehicleTypes)) {
-    str<-paste0(str,"  <vehicleType id=\"",vehicleTypes[i,]$id,"\">\n")
-    str<-paste0(str,"    <description>",vehicleTypes[i,]$service_type,"</description>\n")
-    str<-paste0(str,"    <capacity>\n")
-    str<-paste0(str,"      <seats persons=\"",vehicleTypes[i,]$seats,"\"/>\n")
-    str<-paste0(str,"      <standingRoom persons=\"",vehicleTypes[i,]$standingRoom,"\"/>\n")
-    str<-paste0(str,"    </capacity>\n")
-    str<-paste0(str,"    <length meter=\"",vehicleTypes[i,]$length,"\"/>\n")
-    str<-paste0(str,"    <accessTime secondsPerPerson=\"",vehicleTypes[i,]$accessTime,"\"/>\n")
-    str<-paste0(str,"    <egressTime secondsPerPerson=\"",vehicleTypes[i,]$egressTime,"\"/>\n")
-    str<-paste0(str,"    <passengerCarEquivalents pce=\"",vehicleTypes[i,]$passengerCarEquivalents,"\"/>\n")
-    str<-paste0(str,"  </vehicleType>\n")
-  }
-  cat(str,file=outxml,append=TRUE)
-  str<-""
-  for (i in 1:nrow(departures)) {
-    str<-paste0(str,"  <vehicle id=\"",departures[i,]$vehicleRefId,"\" type=\"",departures[i,]$type,"\"/>\n")
-    if (i%%writeInterval==0 || i==nrow(departures)) {
-      cat(str,file=outxml,append=TRUE)
-      str<-"" # clear the buffer after writing it out
-    }
-    # report progress
-    if (i%%50==0 || i==nrow(departures)) printProgress(i,nrow(departures),' Vehicles')
-  }
-  cat(paste0("</vehicleDefinitions>\n"),file=outxml,append=TRUE)
-
-
-
-  echo("writing transitSchedule.xml\n")
-  outxml<-paste0(outputLocation,"transitSchedule.xml")
-  str<-""
-
-  # transitSchedule
-  cat(
-    "<?xml version=\"1.0\" ?>
-    <!DOCTYPE transitSchedule SYSTEM \"http://www.matsim.org/files/dtd/transitSchedule_v1.dtd\">
-    <transitSchedule>
-    <transitStops>\n",
-    file=outxml,append=FALSE)
-
-  echo("writing transitStops\n")
-  for (i in 1:nrow(transitStops)) {
-    # for (i in 1:100) {
-    str<-paste0(str,
-                "    <stopFacility id=\"",transitStops[i,]$stop_id,"\" isBlocking=\"false\" linkRefId=\"",
-                transitStops[i,]$linkRefId,"\" x=\"",transitStops[i,]$x,"\" y=\"",transitStops[i,]$y,"\"/>\n")
-
-    if (i%%writeInterval==0 || i==nrow(transitStops)) {
-      cat(str,file=outxml,append=TRUE)
-      str<-"" # clear the buffer after writing it out
-    }
-    # report progress
-    if (i%%50==0 || i==nrow(transitStops)) printProgress(i,nrow(transitStops),' transitStops')
-  }
-  cat(paste0("  </transitStops>\n"),file=outxml,append=TRUE)
-  cat(paste0("  <transitLine id=\"",city,"\">\n"),file=outxml,append=TRUE)
-
-  echo("writing vehicleTripMatching\n")
-  str<-""
-  writeInterval<-100
-
-  transitRoutes<-routeProfile$transitRouteId%>%unique()%>%sort()
-
-  for (i in 1:length(transitRoutes)) {
-    # for (i in 1:100) {
-    routeProfileCurrent <- routeProfile[routeProfile$transitRouteId==transitRoutes[i],]
-    departuresCurrent <- departures[departures$transitRouteId==transitRoutes[i],]
-    if(nrow(routeProfileCurrent)>1){ # I added this to drop those empty route profiles
-      str<-paste0(str,"    <transitRoute id=\"",transitRoutes[i],"\">\n")
-      str<-paste0(str,"      <description>",departuresCurrent[1,]$type,"</description>\n")
-      str<-paste0(str,"      <transportMode>",departuresCurrent[1,]$serviceType,"</transportMode>\n")  ### HERE
-      str<-paste0(str,"      <routeProfile>\n")
-
-      for (j in 1:nrow(routeProfileCurrent)) {
-        # first row: no arrival offset
-        # <stop awaitDeparture="true" departureOffset="departureOffset" refId="refId">
-        if (j == 1) str<-paste0(str,"        <stop awaitDeparture=\"true\" departureOffset=\"",
-                                routeProfileCurrent[j,]$departureOffset,
-                                "\" refId=\"",
-                                routeProfileCurrent[j,]$refId,
-                                "\"/>\n")
-        # rows except first and last
-        # <stop arrivalOffset="arrivalOffset" awaitDeparture="true" departureOffset="departureOffset" refId="refId">
-        else if (j < nrow(routeProfileCurrent)) {
-          str<-paste0(str,"        <stop arrivalOffset=\"",
-                      routeProfileCurrent[j,]$arrivalOffset,
-                      "\" awaitDeparture=\"true\" departureOffset=\"",
-                      routeProfileCurrent[j,]$departureOffset,
-                      "\" refId=\"",
-                      routeProfileCurrent[j,]$refId,
-                      "\"/>\n")
-        }
-        # last row: no departure offset
-        # <stop arrivalOffset="arrivalOffset" refId="refId">
-        else {
-          str<-paste0(str,"        <stop arrivalOffset=\"",
-                      routeProfileCurrent[j,]$arrivalOffset,
-                      "\" refId=\"",
-                      routeProfileCurrent[j,]$refId,
-                      "\"/>\n")
-        }
-      }
-      str<-paste0(str,"      </routeProfile>\n")
-      str<-paste0(str,"      <route>\n")
-      for (j in 1:nrow(routeProfileCurrent)) {
-        if (onroadBusRouting) {
-          if (!is.na(routeProfileCurrent[j,]$link_ids)) {
-            link_ids <- unlist(str_split(routeProfileCurrent[j,]$link_ids, ", "))
-            for (k in 1:length(link_ids)) {
-              str<-paste0(str,"        <link refId=\"",
-                          link_ids[k],
-                          "\"/>\n")
-            }
-          } else {
-            str<-paste0(str,"        <link refId=\"",
-                        routeProfileCurrent[j,]$linkRefId,
-                        "\"/>\n")
-          }
-        } else {
-          str<-paste0(str,"        <link refId=\"",
-                      routeProfileCurrent[j,]$linkRefId,
-                      "\"/>\n")
-        }
-      }
-      str<-paste0(str,"      </route>\n")
-
-      str<-paste0(str,"      <departures>\n")
-      for (k in 1:nrow(departuresCurrent)) {
-        str<-paste0(str,"        <departure departureTime=\"",
-                    departuresCurrent[k,]$departureTime,
-                    "\" id=\"",
-                    departuresCurrent[k,]$departureId,
-                    "\" vehicleRefId=\"",
-                    departuresCurrent[k,]$vehicleRefId,
-                    "\"/>\n")
-      }
-      str<-paste0(str,"      </departures>\n")
-      str<-paste0(str,"    </transitRoute>\n")
-    }
-
-    if (i%%writeInterval==0 || i==length(transitRoutes)) {
-      cat(str,file=outxml,append=TRUE)
-      str<-"" # clear the buffer after writing it out
-    }
-    # report progress
-    if (i%%50==0 || i==length(transitRoutes)) printProgress(i,length(transitRoutes),' vehicleTripMatching')
-  }
-  cat(paste0("  </transitLine>\n"),file=outxml,append=TRUE)
-  cat(paste0("</transitSchedule>\n"),file=outxml,append=TRUE)
+  writeTransitXml(outputLocation, vehicleTypes, departures, transitStops,
+                  routeProfile, city, onroadBusRouting)
   
   # edges to be added to road network 
   if (onroadBusRouting) {
@@ -831,6 +657,35 @@ exportGtfsSchedule <- function(links,
   }
   
   return(edgesCombined)
+}
+
+
+# function to find, for each stop, the nearer of the two end nodes of its
+# nearest link (an end node is only eligible if it is in 'nodes')
+nearestNodeOnNearestLink <- function(stops, nodes, links) {
+  if (nrow(stops) == 0) return(nodes[0, ])
+  nearestLink <- links[st_nearest_feature(stops, links), ]
+  stopXY <- st_coordinates(stops)
+  nodeXY <- st_coordinates(nodes)
+  # row in 'nodes' of each end node, and its squared distance to the stop
+  # (Inf where the end node is not eligible)
+  endNode <- function(endIds) {
+    row <- match(endIds, nodes$id)
+    d <- (stopXY[, 1] - nodeXY[row, 1])^2 + (stopXY[, 2] - nodeXY[row, 2])^2
+    d[is.na(row)] <- Inf
+    list(row = row, d = d)
+  }
+  from <- endNode(nearestLink$from_id)
+  to <- endNode(nearestLink$to_id)
+  nearestRow <- ifelse(from$d < to$d, from$row, to$row)
+  # where both end nodes are the same distance away, keep the node that
+  # st_nearest_feature picks, so the result matches snapping one stop at a time
+  ties <- which(from$d == to$d & from$row != to$row)
+  for (i in ties) {
+    rows <- sort(c(from$row[i], to$row[i]))
+    nearestRow[i] <- rows[st_nearest_feature(stops[i, ], nodes[rows, ])]
+  }
+  return(nodes[nearestRow, ])
 }
 
 
@@ -947,10 +802,10 @@ findNodePairRoutes <- function(stopTimes,
                             directed = T)
     
     # setup for parallel processing and progress reporting
-    cores <- detectCores()
-    if (!is.na(maxcores)) cores <- min(cores, maxcores)
-    cluster <- parallel::makeCluster(cores)
-    doSNOW::registerDoSNOW(cluster)
+    cluster <- startCluster(maxcores)
+    cores <- length(cluster)
+    # stop the cluster if this function exits early with an error
+    on.exit(try(stopCluster(cluster), silent = TRUE), add = TRUE)
     pb <- txtProgressBar(max = max(nrow(nodePairs), 2), style = 3)
     progress <- function(n) setTxtProgressBar(pb, n)
     opts <- list(progress = progress)
@@ -1071,4 +926,111 @@ removeUnroutedStops <- function(stopTimes,
   }
   
   return(list(stopTimes, nodePairRoutes))
+}
+
+# write transitVehicles.xml and transitSchedule.xml; the text for each table is
+# made all at once (and each transit route's from its own rows), rather than row
+# by row, and written in chunks of rows
+writeTransitXml <- function(outputLocation, vehicleTypes, departures, transitStops,
+                            routeProfile, city, onroadBusRouting) {
+  
+  writeRows <- function(rows, con) {
+    for (chunk in split(rows, ceiling(seq_along(rows) / 100000))) {
+      writeLines(chunk, con, sep = "")
+    }
+  }
+  
+  echo("writing transitVehicles.xml\n")
+  con <- file(paste0(outputLocation,"transitVehicles.xml"), "w")
+  writeRows("<?xml version=\"1.0\" ?>
+<vehicleDefinitions xmlns=\"http://www.matsim.org/files/dtd\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://www.matsim.org/files/dtd http://www.matsim.org/files/dtd/vehicleDefinitions_v1.0.xsd\">\n", con)
+  writeRows(paste0("  <vehicleType id=\"",vehicleTypes$id,"\">\n",
+                   "    <description>",vehicleTypes$service_type,"</description>\n",
+                   "    <capacity>\n",
+                   "      <seats persons=\"",vehicleTypes$seats,"\"/>\n",
+                   "      <standingRoom persons=\"",vehicleTypes$standingRoom,"\"/>\n",
+                   "    </capacity>\n",
+                   "    <length meter=\"",vehicleTypes$length,"\"/>\n",
+                   "    <accessTime secondsPerPerson=\"",vehicleTypes$accessTime,"\"/>\n",
+                   "    <egressTime secondsPerPerson=\"",vehicleTypes$egressTime,"\"/>\n",
+                   "    <passengerCarEquivalents pce=\"",vehicleTypes$passengerCarEquivalents,"\"/>\n",
+                   "  </vehicleType>\n"), con)
+  writeRows(paste0("  <vehicle id=\"",departures$vehicleRefId,"\" type=\"",departures$type,"\"/>\n"), con)
+  writeRows("</vehicleDefinitions>\n", con)
+  close(con)
+  
+  echo("writing transitSchedule.xml\n")
+  con <- file(paste0(outputLocation,"transitSchedule.xml"), "w")
+  on.exit(close(con))
+  writeRows("<?xml version=\"1.0\" ?>
+    <!DOCTYPE transitSchedule SYSTEM \"http://www.matsim.org/files/dtd/transitSchedule_v1.dtd\">
+    <transitSchedule>
+    <transitStops>\n", con)
+  
+  echo("writing transitStops\n")
+  writeRows(paste0("    <stopFacility id=\"",transitStops$stop_id,"\" isBlocking=\"false\" linkRefId=\"",
+                   transitStops$linkRefId,"\" x=\"",transitStops$x,"\" y=\"",transitStops$y,"\"/>\n"), con)
+  writeRows("  </transitStops>\n", con)
+  writeRows(paste0("  <transitLine id=\"",city,"\">\n"), con)
+  
+  echo("writing vehicleTripMatching\n")
+  transitRoutes<-routeProfile$transitRouteId%>%unique()%>%sort()
+  # the rows of each transit route, found once rather than for each route
+  routeProfiles <- split(routeProfile, factor(routeProfile$transitRouteId, levels = transitRoutes))
+  routeDepartures <- split(departures, factor(departures$transitRouteId, levels = transitRoutes))
+  
+  routeXml <- function(transitRoute, routeProfileCurrent, departuresCurrent) {
+    n <- nrow(routeProfileCurrent)
+    if (n <= 1) return("")  # drop the empty route profiles
+    
+    # first stop: no arrival offset; last stop: no departure offset
+    stops <- ifelse(seq_len(n) == 1,
+                    paste0("        <stop awaitDeparture=\"true\" departureOffset=\"",
+                           routeProfileCurrent$departureOffset,
+                           "\" refId=\"", routeProfileCurrent$refId, "\"/>\n"),
+                    ifelse(seq_len(n) < n,
+                           paste0("        <stop arrivalOffset=\"",
+                                  routeProfileCurrent$arrivalOffset,
+                                  "\" awaitDeparture=\"true\" departureOffset=\"",
+                                  routeProfileCurrent$departureOffset,
+                                  "\" refId=\"", routeProfileCurrent$refId, "\"/>\n"),
+                           paste0("        <stop arrivalOffset=\"",
+                                  routeProfileCurrent$arrivalOffset,
+                                  "\" refId=\"", routeProfileCurrent$refId, "\"/>\n")))
+    
+    # on-road bus routes use their road links, where found
+    if (onroadBusRouting) {
+      linkRefs <- str_split(routeProfileCurrent$link_ids, ", ")
+      noLinkIds <- is.na(routeProfileCurrent$link_ids)
+      linkRefs[noLinkIds] <- as.list(as.character(routeProfileCurrent$linkRefId[noLinkIds]))
+      linkRefs <- unlist(linkRefs)
+    } else {
+      linkRefs <- routeProfileCurrent$linkRefId
+    }
+    
+    paste0(c("    <transitRoute id=\"",transitRoute,"\">\n",
+             "      <description>",departuresCurrent[1,]$type,"</description>\n",
+             "      <transportMode>",departuresCurrent[1,]$serviceType,"</transportMode>\n",
+             "      <routeProfile>\n",
+             stops,
+             "      </routeProfile>\n",
+             "      <route>\n",
+             paste0("        <link refId=\"", linkRefs, "\"/>\n"),
+             "      </route>\n",
+             "      <departures>\n",
+             paste0("        <departure departureTime=\"",
+                    departuresCurrent$departureTime,
+                    "\" id=\"",
+                    departuresCurrent$departureId,
+                    "\" vehicleRefId=\"",
+                    departuresCurrent$vehicleRefId,
+                    "\"/>\n"),
+             "      </departures>\n",
+             "    </transitRoute>\n"), collapse = "")
+  }
+  
+  writeRows(unlist(Map(routeXml, as.character(transitRoutes), routeProfiles, routeDepartures),
+                   use.names = FALSE), con)
+  writeRows("  </transitLine>\n", con)
+  writeRows("</transitSchedule>\n", con)
 }

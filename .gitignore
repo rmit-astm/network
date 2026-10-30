@@ -10,3 +10,4 @@ output/
 data/*.zip
 data/*.tif
 data/*.gpkg
+!tests/data/*.sqlite

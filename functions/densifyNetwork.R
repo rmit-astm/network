@@ -22,7 +22,8 @@
 # "corridor"       ,  21           
 # "steps"          ,  22
 
-densifyNetwork <- function(networkList, minimum_length=400, densifyBikeways=F){
+densifyNetwork <- function(networkList, minimum_length=400, densifyBikeways=F,
+                           maxcores=NA){
   # networkList<-networkConnected;minimum_length = 400
   nodes_df <- networkList[[1]]
   links_df <- networkList[[2]] %>%
@@ -37,9 +38,14 @@ densifyNetwork <- function(networkList, minimum_length=400, densifyBikeways=F){
       filter(length>minimum_length & !highway_order%in%c(1,8,16,17,18,19,20,21,22))
   }
 
+  # nothing to densify (eg a small area with no long links), so return unchanged
+  if (nrow(links_to_segmentize) == 0) {
+    return(list(nodes_df, links_df %>% dplyr::select(-tmp_id)))
+  }
+
   links_unsegmented <- links_df %>%
     filter(!tmp_id%in%links_to_segmentize$tmp_id)
-  
+
   # segment_nodes <- links_to_segmentize %>%
   #   st_line_sample(density = units::set_units(minimum_length, m))
 
@@ -53,13 +59,36 @@ densifyNetwork <- function(networkList, minimum_length=400, densifyBikeways=F){
   nodes_list <- segment_nodes %>%
     st_buffer(0.001, endCapStyle="SQUARE") %>%
     st_geometry()
-  links_list_segmented <- list()
   
-  for (i in 1:length(links_list)) {
-    links_list_segmented[i] <- st_difference(links_list[i],nodes_list[i])
-    if((i%%500)/500==0) cat(paste0(i,"/",length(links_list)," rows segmented\n"))
-    if(i==length(links_list)) cat(paste0(i,"/",length(links_list)," rows segmented\n"))
-  }
+  # cut each link at its segment nodes, in chunks of links in parallel
+  cluster <- startCluster(maxcores)
+  cores <- length(cluster)
+  # stop the cluster if this function exits early with an error
+  on.exit(try(stopCluster(cluster), silent = TRUE), add = TRUE)
+  chunks <- split(seq_along(links_list),
+                  cut(seq_along(links_list), min(cores * 10, length(links_list)),
+                      labels = FALSE))
+  pb <- txtProgressBar(max = length(chunks), style = 3)
+  progress <- function(n) setTxtProgressBar(pb, n)
+  opts <- list(progress = progress)
+  
+  echo(paste("Segmenting", length(links_list), "links; parallel processing with",
+             cores, "cores\n"))
+  
+  links_list_segmented <-
+    foreach(links = lapply(chunks, function(rows) links_list[rows]),
+            nodes = lapply(chunks, function(rows) nodes_list[rows]),
+            .combine = c,
+            .packages = c("sf"),
+            .options.snow = opts) %dopar% {
+              lapply(seq_along(links), function(i) {
+                st_difference(links[i], nodes[i])[[1]]
+              })
+            }
+  
+  # close the progress bar and cluster
+  close(pb)
+  stopCluster(cluster)
   
   # add flag for direction in which geometry of links_to_segmentize is recorded
   links_to_segmentize <- links_to_segmentize %>%

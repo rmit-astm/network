@@ -1,0 +1,29 @@
+# Greater Bendigo: merged over 'config/default.yml'
+city: Bendigo
+
+region:
+  region: ./data/greater_bendigo.sqlite
+  surroundingRegion: ./data/victoria.sqlite
+
+osm:
+  osmGpkg: ./output/bendigo_osm.gpkg
+  unconfiguredSqlite: ./output/bendigo_network_unconfigured.sqlite
+
+elevation:
+  demFile: ./data/dem_bendigo.tif
+
+ndvi:
+  ndviFile: ./data/NDVI_Bendigo_2023.tif
+
+treeCanopyCover:
+  treeCanopyCoverFile: ./data/TCC_Bendigo_5m.tif
+
+bendigo:
+  addBendigoData: true
+  bendigoParking: ./data/CoGB_Parking_GIS_Layers_GDA2020Z55_20240222.zip
+  bendigoParkingPoly: /CoGB_Parking_Polygons_GDA2020Z55_20240222.shp
+  bendigoParkingLine: /CoGB_Parking_Lines_GDA2020Z55_20240222.shp
+  bendigoBikeRacks: ./data/Bike Racks_v1.2.csv
+  bendigoEverydayRoutes: ./data/cogb-cycling-everyday-rides.shz
+  bendigoExistingProtected: ./data/cogb_existing_protected_network.sqlite
+  bendigoProposedProtected: ./data/cogb_proposed_protected_network.sqlite

@@ -3,12 +3,78 @@ source("../../NetworkGenerator.R")
 test_that("Network generation from Sqlite input works", {
   set.seed(12345)
   wd<-getwd()
-  
+
   setwd("../..")
-  makeNetwork("test")
+  makeNetwork("./tests/test_config.yml")
   setwd(wd)
-  
+
   expect_true(file.exists('../../output/test/network.sqlite'))
+  expect_true(file.exists('../../output/test/config.yml'))
+  links <- sf::st_read('../../output/test/network.sqlite', layer = "links", quiet = TRUE)
+  expect_gt(nrow(links), 0)
 })
 
-  
+
+
+test_that("A failed build stops logging and reports the error", {
+  sinks <- sink.number()
+  wd <- getwd()
+  setwd("../..")
+  on.exit({unlink("output/test_error", recursive = TRUE); setwd(wd)})
+
+  # an invalid output CRS fails just after logging has started
+  expect_error(suppressWarnings(
+    makeNetwork("./tests/test_config.yml",
+                list(outputSubdirectory = "test_error", outputCrs = "not-a-crs"))))
+  expect_equal(sink.number(), sinks)
+})
+
+test_that("A build resumed from the checkpoint gives the same network", {
+  wd <- getwd()
+  setwd("../..")
+  on.exit({
+    unlink(c("output/test_checkpoint", "output/test_resumed",
+             "output/test_checkpoint.sqlite"), recursive = TRUE)
+    setwd(wd)
+  })
+
+  makeNetwork("./tests/test_config.yml",
+              list(outputSubdirectory = "test_checkpoint", saveCheckpoint = TRUE,
+                   checkpointSqlite = "./output/test_checkpoint.sqlite"))
+  makeNetwork("./tests/test_config.yml",
+              list(outputSubdirectory = "test_resumed", startFromCheckpoint = TRUE,
+                   checkpointSqlite = "./output/test_checkpoint.sqlite"))
+
+  for (layer in c("nodes", "links")) {
+    full <- sf::st_read("output/test_checkpoint/network.sqlite", layer, quiet = TRUE)
+    resumed <- sf::st_read("output/test_resumed/network.sqlite", layer, quiet = TRUE)
+    expect_equal(sf::st_drop_geometry(resumed), sf::st_drop_geometry(full))
+    expect_equal(sf::st_geometry(resumed), sf::st_geometry(full))
+  }
+  expect_match(paste(readLines("output/test_resumed/makeMatsimNetwork.log"), collapse = "\n"),
+               "Reading in checkpoint")
+})
+
+test_that("Destinations are found and linked to network nodes", {
+  wd <- getwd()
+  setwd("../..")
+  on.exit({unlink("output/test_destinations", recursive = TRUE); setwd(wd)})
+
+  makeNetwork("./tests/test_config.yml",
+              list(outputSubdirectory = "test_destinations", addDestinationLayer = TRUE,
+                   osmGpkg = "./tests/data/test_osm.gpkg",
+                   gtfs_feed = "./tests/data/test_gtfs.zip", downloadGtfs = FALSE))
+
+  output <- "output/test_destinations/network.sqlite"
+  destinations <- sf::st_read(output, layer = "destinations", quiet = TRUE)
+  nodes <- sf::st_read(output, layer = "nodes", quiet = TRUE)
+  expect_true(all(c("park", "pt_stop", "cafe") %in% destinations$dest_type))
+  expect_setequal(destinations$pt_stop_type[destinations$dest_type == "pt_stop"],
+                  c("tram", "train", "bus"))
+  # every destination has nodes for each mode, and they are in the network
+  for (mode in c("node_cycle", "node_walk", "node_car")) {
+    entryNodes <- as.numeric(unlist(strsplit(destinations[[mode]], ", ")))
+    expect_false(anyNA(entryNodes))
+    expect_true(all(entryNodes %in% nodes$id))
+  }
+})

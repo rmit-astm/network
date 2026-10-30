@@ -88,10 +88,10 @@ splitPathsAtPointsParallelLoop <- function(paths,
                                            maxcores) {
   
   # setup for parallel processing - detect no of available cores and create cluster
-  cores <- detectCores()
-  if (!is.na(maxcores)) cores <- min(cores, maxcores)
-  cluster <- parallel::makeCluster(cores)
-  doSNOW::registerDoSNOW(cluster)
+  cluster <- startCluster(maxcores)
+  cores <- length(cluster)
+  # stop the cluster if this function exits early with an error
+  on.exit(try(stopCluster(cluster), silent = TRUE), add = TRUE)
   
   # set up progress reporting 
   pb <- txtProgressBar(max = nrow(paths), style = 3)

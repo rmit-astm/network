@@ -1,0 +1,187 @@
+# Default network generation parameters
+#
+# Every parameter used by makeNetwork() is listed here, with its default value.
+# A city config file (eg 'config/melbourne.yml') only needs to set the values
+# that differ from these defaults; it is merged over this file, using the same
+# sections. Parameters that are not listed here are rejected, so a mistyped
+# parameter name is caught before the build starts.
+#
+# Paths are relative to the repository root. Use 'null' for a missing value
+# (eg 'analysis_date: null', 'maxcores: null').
+
+# Name of the city: used in log messages, and to enable city-specific steps
+# (eg the 'bendigo' section below only applies when city is 'Bendigo')
+city: ""
+
+# Coordinate system for the network: a projected, metre-based EPSG code
+outputCrs: 7899
+
+# Subdirectory of 'output/' for this build (deleted and recreated if it exists)
+outputSubdirectory: generated_network
+
+# PARALLEL PROCESSING
+# Maximum number of cores to use in parallel processing (which is used in several
+# functions): by default ('null'), all cores are used, but if parallel processing
+# causes memory overflow problems, try setting a maximum number, eg 'maxcores: 8'
+maxcores: null
+
+region:
+  # sqlite file defining boundary of the area for which the OSM extract is
+  # required, to be used for fully-detailed road and public transport network
+  # and extracted destinations
+  region: ""
+  # sqlite file defining boundary of a wider area for which the OSM extract is
+  # required (eg state), to be used for sparser wide road and public transport
+  # network (if not required, then make this the same as 'region')
+  surroundingRegion: ""
+  # Distance to buffer region when getting osm extract, destinations or gtfs routes
+  regionBufferDist: 10000
+
+osm:
+  # EXTRACT OSM for REGION
+  # Whether to make an OSM extract for the region, either by downloading an
+  # extract in .osm.pbf format and clipping it to the region, or by clipping an
+  # existing extract in .osm.pbf format (if not, and if network needs to be
+  # processed, then must already have 'osmGpkg' file)
+  extractOsm: true
+  useFullExtractHeld: false  # whether to use an existing OSM extract, instead of downloading
+  # if 'extractOsm' and 'useFullExtractHeld' are true, location where an .osm.pbf
+  # file is already held which is to be clipped and converted to a .gpkg file
+  fullExtractLocation: ./data/geofabrik_australia-latest.osm.pbf
+  retainDownload: true  # whether to retain downloaded file after region extracted
+  # location where downloaded OSM extract for region is to be stored (if
+  # 'extractOsm') and/or read from (if 'networkFromOsm')
+  osmGpkg: ""
+  # NETWORK FROM OSM
+  # Whether to build unconfigured network from osm extract (if not, must already
+  # have 'unconfiguredSqlite')
+  networkFromOsm: true
+  saveUnconfigured: true
+  # location where processed OSM file is to be stored (if 'networkFromOsm') or
+  # read from (if not)
+  unconfiguredSqlite: ""
+
+crop:
+  # Whether to crop the network to a test area
+  crop2Area: false
+  # if 'crop2Area', cropArea location from
+  # https://github.com/JamesChevalier/cities/tree/master/australia/victoria
+  # (only supported for Victoria at this stage)
+  cropAreaPoly: ""
+
+simplification:
+  # Whether to simplify edges by combining edges between the same nodes,
+  # simplifying chains of edges, and removing dangles (note: if true, then 'bike
+  # lane project' tags will not be collected when processing OSM tags, as the
+  # simplification functions are not configured for them)
+  simplifyEdges: false
+  shortLinkLength: 20
+  minDangleLinkLengh: 500
+  # LINK APPEARANCE SIMPLIFICATION
+  # Whether to simplify the appearance of links while keeping start and end
+  # points unchanged
+  simplifyAppearance: false
+  # if 'simplifyAppearance', the Douglas-Peucker tolerance (m)
+  appearanceTolerance: 20
+
+densification:
+  densificationMaxLength: 500
+  densifyBikeways: true
+
+capacity:
+  # Whether to multiply capacity of short links (by default, those shorter than
+  # 100m, by 2) or not. In some cases such as when building network for
+  # simulation of small samples (e.g. <1%) it might be desired
+  adjustCapacity: false
+  adjustCapacityMaxLength: 100  # links shorter than this (m) are adjusted
+  adjustCapacityMultiplier: 2
+
+lts:
+  # Whether level of traffic stress treats on-road cycle lanes as mixed traffic
+  # if they are too narrow or shared with parking (only where OSM 'bike lane
+  # project' tags are present)
+  excludeInadequateLanes: true
+
+elevation:
+  # Whether to add elevation or not
+  addElevation: true
+  ElevationMultiplier: 1
+  # if 'addElevation', digital elevation model raster file
+  demFile: ""
+
+destinations:
+  # Whether to add a destinations layer (drawn from OSM, and GTFS for PT) or not
+  addDestinationLayer: true
+
+ndvi:
+  # Whether to add NDVI or not
+  addNDVI: false
+  # Buffer distance for finding average NDVI for links
+  ndviBuffDist: 30
+  # if 'addNDVI', raster file with NDVI values
+  ndviFile: ""
+
+treeCanopyCover:
+  # Whether to add tree canopy cover or not
+  addTreeCanopyCover: true
+  # if 'addTreeCanopyCover', raster file with tree canopy coverage values
+  treeCanopyCoverFile: ""
+
+schoolZones:
+  # Whether to add school time speed limit zones or not
+  addSchoolZones: true
+  # if 'addSchoolZones', sqlite file containing roads with school time speed
+  # limit zones
+  schoolZoneFile: ./data/school_zones_March_2024.sqlite
+
+gtfs:
+  # Whether to add a network based on GTFS or not
+  addGtfs: true
+  # if 'addGtfs' or 'addDestinationLayer', zip file containing GTFS data in flat
+  # format (that is, with 'stops.txt' etc at the top level)
+  gtfs_feed: ./data/gtfs.zip
+  # Whether to download the GTFS feed (if not, must already have a feed in flat
+  # format at 'gtfs_feed'); only used if 'addGtfs' or 'addDestinationLayer'
+  downloadGtfs: true
+  # if 'downloadGtfs', location from which the GTFS feed is to be downloaded
+  gtfsUrl: https://data.ptv.vic.gov.au/downloads/gtfs.zip
+  # Whether the downloaded feed is a nested bundle holding a separate feed for
+  # each mode (as PTV's is) and so must be converted to a flat feed
+  gtfsNested: true
+  # if 'downloadGtfs' and 'gtfsNested', location where the downloaded bundle is
+  # to be stored before being converted to 'gtfs_feed'
+  gtfsBundle: ./data/gtfs_ptv_bundle.zip
+  # if 'gtfsNested', the mode folders to include (PTV: see prepareGtfs.R)
+  gtfsFolders: [1, 2, 3, 4, 5, 6]
+  retainGtfsDownload: true  # whether to retain downloaded bundle after feed converted
+  # Analysis date as 'YYYY-MM-DD', eg a midweek day that's not a public or school
+  # holiday; or 'null' to choose a representative weekday automatically from the
+  # GTFS feed's calendar
+  analysis_date: null
+  onroadBus: true  # whether to route buses on roads (rather than create separate pseudo links)
+
+checkpoint:
+  # Whether to save the network just before the public transport step (nodes,
+  # links and destinations) to 'checkpointSqlite', so that a build can be resumed
+  # from there, eg if the public transport step fails
+  saveCheckpoint: false
+  # Whether to start from 'checkpointSqlite' (saved by an earlier build), skipping
+  # all the steps before public transport
+  startFromCheckpoint: false
+  checkpointSqlite: ""
+
+outputs:
+  writeXml: false
+  writeShp: false
+  writeSqlite: true
+
+bendigo:
+  # City of Greater Bendigo data, only used if 'addBendigoData' is true
+  addBendigoData: false
+  bendigoParking: ""
+  bendigoParkingPoly: ""
+  bendigoParkingLine: ""
+  bendigoBikeRacks: ""
+  bendigoEverydayRoutes: ""
+  bendigoExistingProtected: ""
+  bendigoProposedProtected: ""

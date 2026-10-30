@@ -135,28 +135,28 @@ processOsm <- function(osmGpkg, region, regionBufferDist = 10000,
   # convert to dataframe, snap to grid, remove empty geometries, add unique id
   echo("Combining the split paths into a single dataframe\n")
   system.time(
-  split.paths <- bind_rows(split.path.list) %>% 
-    st_snap_to_grid(1) %>%
-    # remove empty geometries
-    filter(!st_is_empty(geom)) %>%
-  # add unique id
-    mutate(path_id = row_number())
+    split.paths <- rbindlist(split.path.list, fill=TRUE) %>% 
+      st_as_sf() %>%
+      st_snap_to_grid(1) %>%
+      # remove empty geometries
+      filter(!st_is_empty(geom)) %>%
+      # add unique id
+      mutate(path_id = row_number())
   )
-
+  
   # find endpoints of each split path
   echo("Finding endpoints of the split paths\n")
-  endpoints <- rbind(lwgeom::st_startpoint(split.paths) %>% st_sf(),
-                     lwgeom::st_endpoint(split.paths) %>% st_sf()) %>%
-    # remove duplicates (produces multipoint)
-    summarise() %>%
-    # convert multipoint to point
-    st_cast("POINT") %>%
+  endpoints <- c(lwgeom::st_startpoint(split.paths) %>% st_sfc(),
+                 lwgeom::st_endpoint(split.paths) %>% st_sfc()) %>%
+    # remove duplicates
+    unique() %>%
+    st_sf() %>%
     # add unique id and set geometry column name
     mutate(endpoint_id = row_number()) %>%
     st_set_geometry("geom")
   
   # find split.paths that have more than 2 endpoints within 0.1m, in order
-  # to re-split at ajdacent endpoints
+  # to re-split at adjacent endpoints
   echo("Finding paths that need to be re-split\n")
   paths.with.nearby.endpoints <- split.paths %>%
     # joint endpoints within 0.1m
@@ -312,9 +312,12 @@ processOsm <- function(osmGpkg, region, regionBufferDist = 10000,
   # separate final paths and osm metadata
   # -----------------------------------#
   
-  # remove metadata from final paths
+  # remove metadata from final paths (as a plain sf object, not also a
+  # data.table, so it is the same as when read back from the saved network)
   final.paths <- final.paths.with.metadata %>%
-    dplyr::select(osm_id, length, from_id, to_id)
+    dplyr::select(osm_id, length, from_id, to_id) %>%
+    as.data.frame() %>%
+    st_sf()
   
   # extract the non-spatial data for the paths
   osm.metadata <- paths %>%

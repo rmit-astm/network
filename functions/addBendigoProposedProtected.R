@@ -48,10 +48,10 @@ addBendigoProposedProtected <- function(network.nodes,
   # routing loop (small job for parallel; but structure matches addBendigoEverydayRoutes)
   # -----------------------------------#
   
-  cores <- detectCores()
-  if (!is.na(maxcores)) cores <- min(cores, maxcores)
-  cluster <- parallel::makeCluster(cores)
-  doSNOW::registerDoSNOW(cluster)
+  cluster <- startCluster(maxcores)
+  cores <- length(cluster)
+  # stop the cluster if this function exits early with an error
+  on.exit(try(stopCluster(cluster), silent = TRUE), add = TRUE)
   pb <- txtProgressBar(max = max(nrow(protected.routes), 2), style = 3)
   progress <- function(n) setTxtProgressBar(pb, n)
   opts <- list(progress = progress)

@@ -88,61 +88,14 @@ exportShp <- function(networkFinal, outputDir, outputCrs){
 # XML ---------------------------------------------------------------------
 exportXML <- function(networkFinal, outputDir){
   # Functions ---------------------------------------------------------------
-  add3DNode <- function(x){
-    this_node <- nodes[x,]
-    str_node <- paste0("    <node id=\"",
-                       this_node$id , "\" x=\"",
-                       this_node$x  , "\" y=\"", 
-                       this_node$y  , "\" z=\"", 
-                       this_node$z  , "\" />"  ,
-                       "\n")
-    
-    cat(str_node, file=xml_file,append=TRUE)
-    if(x %%50 == 0) printProgress(x, nrow(nodes), 'node')
-  }
-  add2DNode <- function(x){
-    this_node <- nodes[x,]
-    str_node <- paste0("    <node id=\""       ,
-                       this_node$id , "\" x=\"",
-                       this_node$x  , "\" y=\"",
-                       this_node$y  , "\" />"  ,
-                       "\n")
-    cat(str_node, file=xml_file,append=TRUE)
-    if(x %%50 == 0) printProgress(x, nrow(nodes), 'node')
+  # write lines to the file in chunks of rows, as the text for a whole network
+  # can be too long for a single string
+  writeRows <- function(rows) {
+    for (chunk in split(rows, ceiling(seq_along(rows) / 100000))) {
+      writeLines(chunk, xml_con, sep = "")
+    }
   }
   
-  addLink <- function(x){
-    this_link <- links[x,]
-    if(x %%50 == 0) printProgress(x, nrow(links), 'link')
-    
-    links_str <- paste0("    <link id=\"", as.character(this_link$id),
-                        "\" from=\"", as.character(this_link$from_id),
-                        "\" to=\"", as.character(this_link$to_id),
-                        "\" length=\"", this_link$length,
-                        "\" capacity=\"", this_link$capacity,
-                        "\" freespeed=\"", this_link$freespeed,
-                        "\" permlanes=\"", this_link$permlanes,
-                        "\" oneway=\"", "1",
-                        "\" modes=\"", as.character(this_link$modes),
-                        "\">\n",
-                        "    <attributes>\n",
-                        "        <attribute name=\"type\" class=\"java.lang.String\">", 
-                        this_link$type, "</attribute>\n",
-                        "        <attribute name=\"cycleway\" class=\"java.lang.String\">", 
-                        this_link$cycleway, "</attribute>\n",
-                        "        <attribute name=\"surface\" class=\"java.lang.String\">", 
-                        this_link$surface, "</attribute>\n",
-                        "        <attribute name=\"slopePct\" class=\"java.lang.String\">", 
-                        this_link$slope, "</attribute>\n",
-                        "        <attribute name=\"bicycleInfrastructureSpeedFactor\" class=\"java.lang.String\">", 
-                        this_link$bicycleInfrastructureSpeedFactor, "</attribute>\n",
-                        "        <attribute name=\"lvl_traf_stress\" class=\"java.lang.String\">", 
-                        this_link$lvl_traf_stress, "</attribute>\n",
-                        "    </attributes>\n",
-                        "    </link>\n")
-    
-    cat(links_str, file=xml_file,append=TRUE)
-  }
   fncols <- function(data, cname) {
     add <-cname[!cname%in%names(data)]
     if(length(add)!=0) data[add] <- NA
@@ -161,13 +114,15 @@ exportXML <- function(networkFinal, outputDir){
   # dir.create('./generatedNetworks/', showWarnings = FALSE)
   xml_file <- paste0(outputDir,'/network.xml')
   
+  xml_con <- file(xml_file, "w")
+  on.exit(close(xml_con), add = TRUE)
+  
   # Adding the prefix
-  open(file(xml_file), "wt")
   str_header <- paste0("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n",
                        "<!DOCTYPE network SYSTEM \"http://www.matsim.org/files/dtd/network_v2.dtd\">\n",
                        "<network>\n",
                        "<nodes>\n") 
-  cat(str_header,file=xml_file,append=FALSE)
+  writeRows(str_header)
   
   
   # Nodes -------------------------------------------------------------------
@@ -177,11 +132,16 @@ exportXML <- function(networkFinal, outputDir){
   if ("z" %in% colnames(nodes)){
     nodes <- nodes %>% 
       mutate(z = if_else(is.na(z), true = 10, z))
-    purrr::map_dfr(1:nrow(nodes),add3DNode)
+    writeRows(paste0("    <node id=\"", nodes$id,
+                     "\" x=\"", nodes$x,
+                     "\" y=\"", nodes$y,
+                     "\" z=\"", nodes$z, "\" />", "\n"))
   }else{
-    purrr::map_dfr(1:nrow(nodes),add2DNode)
+    writeRows(paste0("    <node id=\"", nodes$id,
+                     "\" x=\"", nodes$x,
+                     "\" y=\"", nodes$y, "\" />", "\n"))
   }
-  cat("</nodes>\n",file=xml_file,append=TRUE)
+  writeRows("</nodes>\n")
   
   # Links -------------------------------------------------------------------
   if(class(links)[1]=="sf") links <- st_drop_geometry(links)
@@ -206,7 +166,7 @@ exportXML <- function(networkFinal, outputDir){
   #   bi_links) 
   
   # Adding bicycle and extra information
-  links <-  fncols(links, c("id","osm_id", "highway", "cycleway","slope", 
+  links <-  fncols(links, c("id","osm_id", "highway", "cycleway","slope_pct", 
                             "bicycleInfrastructureSpeedFactor", "lvl_traf_stress")) 
   links <- links %>%
     # mutate(id = ifelse(is.na(id),row_number(),id)) %>%
@@ -218,18 +178,40 @@ exportXML <- function(networkFinal, outputDir){
     mutate(type = replace(highway, is.na(highway), "NotSpecified")) %>% 
     mutate(surface = ifelse(is.na(surface),"asphalt",surface)) %>% 
     mutate(cycleway = replace(cycleway, is.na(cycleway),"No")) %>% 
-    mutate(slope = replace(slope, is.na(slope),"NA")) %>% 
+    mutate(slope_pct = replace(slope_pct, is.na(slope_pct),"NA")) %>% 
     mutate(bicycleInfrastructureSpeedFactor = 1) %>% 
     mutate(lvl_traf_stress = replace(lvl_traf_stress, is.na(lvl_traf_stress),"NA"))
     
   # Adding links
   echo('\n')
   echo('Starting to add links to XML\n')
-  cat("<links>\n",file=xml_file,append=TRUE)
-  purrr::map_dfr(1:nrow(links),addLink)
+  writeRows("<links>\n")
+  writeRows(paste0("    <link id=\"", as.character(links$id),
+                   "\" from=\"", as.character(links$from_id),
+                   "\" to=\"", as.character(links$to_id),
+                   "\" length=\"", links$length,
+                   "\" capacity=\"", links$capacity,
+                   "\" freespeed=\"", links$freespeed,
+                   "\" permlanes=\"", links$permlanes,
+                   "\" oneway=\"", "1",
+                   "\" modes=\"", as.character(links$modes),
+                   "\">\n",
+                   "    <attributes>\n",
+                   "        <attribute name=\"type\" class=\"java.lang.String\">", 
+                   links$type, "</attribute>\n",
+                   "        <attribute name=\"cycleway\" class=\"java.lang.String\">", 
+                   links$cycleway, "</attribute>\n",
+                   "        <attribute name=\"surface\" class=\"java.lang.String\">", 
+                   links$surface, "</attribute>\n",
+                   "        <attribute name=\"slopePct\" class=\"java.lang.String\">", 
+                   links$slope_pct, "</attribute>\n",
+                   "        <attribute name=\"bicycleInfrastructureSpeedFactor\" class=\"java.lang.String\">", 
+                   links$bicycleInfrastructureSpeedFactor, "</attribute>\n",
+                   "        <attribute name=\"lvl_traf_stress\" class=\"java.lang.String\">", 
+                   links$lvl_traf_stress, "</attribute>\n",
+                   "    </attributes>\n",
+                   "    </link>\n"))
   
-  cat(paste0("</links>\n", "</network>\n"),
-      file=xml_file,append=TRUE)
+  writeRows(paste0("</links>\n", "</network>\n"))
   echo(paste0('Finished generating the xml output\n'))
-  close(file(xml_file))
 }

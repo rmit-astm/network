@@ -1,83 +1,46 @@
 on:
   push:
-    branches: '*'
+    branches: [master, dev]
   pull_request:
-    branches: '*'
+    branches: [master, dev]
+  workflow_dispatch:
 
 name: build
 
 jobs:
   build:
 
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
 
     env:
-      R_LIBS_USER: ${{ github.workspace }}/RLibs
-
-    services:
-      # Label used to access the service container
-      postgres:
-        # Docker Hub image
-        image: postgis/postgis:11-2.5
-        # Provide the password for postgres
-        env:
-            POSTGRES_PASSWORD: postgres
-            POSTGRES_DB: network_test
-        # Set health checks to wait until postgres has started
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          # Maps tcp port 5432 on service container to the host
-          - 5432:5432
+      # packages are installed below, so don't let the renv .Rprofile take over
+      RENV_AUTOLOADER_ENABLED: false
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
 
-    - name: Test postgres setup
-      run: |
-        psql -U postgres -c 'select version();'
-      env:
-        PGHOST: localhost
-        PGPASSWORD: postgres
-        PGPORT: 5432
+    - name: Check out the repository
+      uses: actions/checkout@v4
 
-    - name: Install required packages
-      run: |
-        sudo apt update
-        sudo apt-get install libudunits2-dev libgdal-dev gdal-bin
-    - name: Clone matsim-melbourne/network
-      uses: actions/checkout@v2
+    - name: Set up R
+      uses: r-lib/actions/setup-r@v2
       with:
-        repository: matsim-melbourne/network
-        path: network
+        r-version: release
+        use-public-rspm: true
 
-    - name: Setup dirs and permissions for installing R packages
-      run: |
-        mkdir -p $R_LIBS_USER
-        sudo chown -R $USER:$USER $GITHUB_WORKSPACE/network
-        sudo chown -R $USER:$USER $R_LIBS_USER
-    - name: Get network data
-      if: steps.cache-packrat.outputs.cache-hit != 'true'
-      working-directory: network/data
-      run: git checkout prepare.sh && ./prepare.sh -test
-
-    - name: Test OSM processing for network generation
-      working-directory: network
-      run: ./processOSM.sh ./data/melbourne.osm 28355 data/network.sqlite
-      env:
-        PGHOST: localhost
-        PGPASSWORD: postgres
-        PGPORT: 5432
-
-    - name: Test MATSim network generation
-      working-directory: network
+    - name: Install R packages (and the system libraries they need)
       shell: Rscript {0}
       run: |
-        install.packages("renv")
-        renv::restore()
-        install.packages("testthat")
+        # the repository's .Rprofile replaces the one that sets the package
+        # repository, so set it here (Posit Package Manager, with Linux binaries)
+        options(repos = c(CRAN = Sys.getenv("RSPM")))
+        install.packages("pak")
+        pak::pkg_install(c("sf", "fs", "tidyverse", "data.table", "igraph", "terra",
+                           "lwgeom", "tidytransit", "hablar", "hms", "osmextract",
+                           "doSNOW", "foreach", "nngeo", "gtfsio", "raster", "units",
+                           "RSQLite", "yaml", "testthat"))
+
+    - name: Test MATSim network generation
+      shell: Rscript {0}
+      run: |
         testthat::test_dir("tests/testthat", stop_on_failure = TRUE)
-      #source("NetworkGenerator.R")
-      #makeNetwork("test)

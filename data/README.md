@@ -30,6 +30,18 @@ Download the following files (as required) for the relevant network location.
 | gtfs.zip                 | GTFS feed for Victoria (see 'GTFS feed' section below) |
 
 
+### Victoria
+| File                     | Description                                       |
+|--------------------------|---------------------------------------------------|
+| victoria.sqlite          | Boundary of Victoria                              |
+| dem_victoria.tif         | Digital elevation model data for Victoria (see `data prep tools.R`) |
+| school_zones_March_2024.sqlite | School zone locations for Victoria          |
+| gtfs.zip                 | GTFS feed for Victoria (see 'GTFS feed' section below) |
+
+No statewide NDVI or tree canopy cover files are held, so `config/victoria.yml`
+leaves NDVI and tree canopy cover out of a Victoria network.
+
+
 ## Other files
 
 The directory also contains the following other files, from which the region boundary files above were created.
@@ -64,9 +76,9 @@ one mode (1 = Regional Train, 2 = Metropolitan Train, 3 = Metropolitan Tram,
 11 = SkyBus). It also uses "extended" route types and sets every sub-feed's
 `agency_id` to the same value.
 
-Where `downloadGtfs` is set to `T` in `NetworkGenerator.R`, this is all handled
+Where `downloadGtfs` is set to `true` in the config file, this is all handled
 automatically: the feed is downloaded from `gtfsUrl` and, because `gtfsNested` is
-`T` for the PTV feed, converted to a flat feed with `functions/prepareGtfs.R`. That
+`true` for the PTV feed, converted to a flat feed with `functions/prepareGtfs.R`. That
 merges the mode folders given by `gtfsFolders` (by default 1–6, which excludes
 interstate services and SkyBus) into one feed, sets each sub-feed's `agency_id` to
 its folder number and normalizes extended route types to the basic types.
@@ -78,7 +90,7 @@ source("functions/prepareGtfs.R"); library(dplyr)
 prepareGtfs("./data/gtfs_ptv_bundle.zip", "./data/gtfs.zip", folders = 1:6)
 ```
 
-By default `analysis_date` in `NetworkGenerator.R` is `NA`, which selects a
+By default `analysis_date` in `config/default.yml` is `null`, which selects a
 representative midweek day automatically from the downloaded feed's calendar. Set
 it explicitly if you need the network built for a particular date.
 
