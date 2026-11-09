@@ -40,3 +40,29 @@ test_that("Routes between bus stops are the shortest paths, in the order of the 
   expect_equal(routed$next_stop_id, c(3, 5, 2, 1))
   expect_equal(routed$link_ids, c("11, 12", "15", "11", NA))
 })
+
+test_that("Bus routes much longer than the car route, or not found, use the car route", {
+  # the shape links go from node 1 to node 3 by a 2.1km detour through node 4,
+  # not from node 3 back to node 1, and from node 1 to node 5 a little longer
+  # than the car link; the car links go directly
+  shape.links <- st_sf(from_id = c(1, 4, 1), to_id = c(4, 3, 5),
+                       length = c(1050, 1050, 500), link_id = c(31, 32, 33),
+                       geometry = st_sfc(lapply(1:3, function(i) st_point(c(i, 0))), crs = 7899))
+  car.links <- st_sf(from_id = c(1, 2, 3, 1), to_id = c(2, 3, 1, 5),
+                     length = c(300, 300, 600, 400), link_id = c(21, 22, 23, 24),
+                     geometry = st_sfc(lapply(1:4, function(i) st_point(c(i, 0))), crs = 7899))
+  stopTimes <- data.frame(trip_id = c("a", "a", "a", "b", "b"),
+                          stop_id = c(1, 3, 1, 1, 5), x = c(0, 600, 0, 0, 0),
+                          y = c(0, 0, 0, 0, 400), region_stop = 1)
+  trips <- data.frame(trip_id = c("a", "b"), route_id = "r")
+  routes <- data.frame(route_id = "r", service_type = "bus")
+
+  routed <- findNodePairRoutes(stopTimes, trips, routes, shape.links, maxcores = 1)
+  expect_equal(routed$link_ids, c("31, 32", NA, "33"))
+  routed <- findNodePairRoutes(stopTimes, trips, routes, shape.links, maxcores = 1,
+                               car.links = car.links)
+  expect_equal(routed$stop_id, c(1, 3, 1))
+  expect_equal(routed$next_stop_id, c(3, 1, 5))
+  expect_equal(routed$link_ids, c("21, 22", "23", "33"))
+  expect_equal(names(routed), c("stop_id", "next_stop_id", "link_ids"))
+})
