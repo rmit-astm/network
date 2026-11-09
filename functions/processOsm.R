@@ -83,37 +83,56 @@ processOsm <- function(osmGpkg, region, regionBufferDist = 10000,
                       dplyr::select(osm_id_a = osm_id, 
                                     bridge_tunnel_a = bridge_tunnel))
   
-  # point intersections that are on the same level
-  intersection.points <- intersection.base %>%
-    # keep just the points where bridge_tunnel match (at grade, both bridge or both tunnel)
-    st_collection_extract("POINT") %>%
-    filter(bridge_tunnel == bridge_tunnel_a)
+  # the intersections are a mix of geometry types, which sf is slow to subset or
+  # extract from when there are many, so the points and lines are found from
+  # the geometries and their types directly
+  intersection.geoms <- unclass(st_geometry(intersection.base))
+  intersection.types <- vapply(intersection.geoms, function(g) class(g)[2], character(1))
+  same.level <- intersection.base$bridge_tunnel == intersection.base$bridge_tunnel_a
+  
+  # point intersections that are on the same level (bridge_tunnel match: at
+  # grade, both bridge or both tunnel), as coordinates, including any points
+  # in geometry collections
+  pointCoords <- function(g) {
+    if (inherits(g, "POINT")) return(matrix(g[1:2], ncol = 2))
+    if (inherits(g, "MULTIPOINT")) return(unclass(g)[, 1:2, drop = FALSE])
+    if (inherits(g, "GEOMETRYCOLLECTION")) {
+      return(do.call(rbind, c(list(matrix(numeric(0), ncol = 2)), lapply(g, pointCoords))))
+    }
+    return(matrix(numeric(0), ncol = 2))
+  }
+  point.rows <- which(same.level & intersection.types %in%
+                        c("POINT", "MULTIPOINT", "GEOMETRYCOLLECTION"))
+  point.coords <- lapply(intersection.geoms[point.rows], pointCoords)
+  intersection.points <- data.frame(
+    osm_id = rep(intersection.base$osm_id[point.rows], vapply(point.coords, nrow, integer(1))),
+    matrix(unlist(lapply(point.coords, t)), ncol = 2, byrow = TRUE,
+           dimnames = list(NULL, c("X", "Y"))))
   
   # line intersections that are on the same level, and that are not the same osm_id
   # - that is, keep where there are two overlapping lines in osm with separate osm_id's
-  intersection.lines <- intersection.base %>%
-    st_collection_extract("LINESTRING") %>%
-    filter(bridge_tunnel == bridge_tunnel_a &
-             osm_id != osm_id_a)
+  line.rows <- which(same.level & intersection.base$osm_id != intersection.base$osm_id_a &
+                       intersection.types %in%
+                       c("LINESTRING", "MULTILINESTRING", "GEOMETRYCOLLECTION"))
+  intersection.lines <- suppressWarnings(intersection.base[line.rows, ] %>%
+    st_collection_extract("LINESTRING"))
   
   # combine the point intersections and the line start/end points, with the
   # osm_ids of their paths (used for splitting the lines)
+  lineEndCoords <- function(endpoints) {
+    data.frame(osm_id = intersection.lines$osm_id,
+               st_coordinates(endpoints)[, c("X", "Y"), drop = FALSE])
+  }
   intersections <- bind_rows(
     # points
     intersection.points,
-    # line start points (with the osm_id's of their paths)
-    intersection.lines %>% 
-      st_startpoint() %>% st_sf() %>% st_set_geometry("geom") %>%
-      cbind(osm_id = intersection.lines$osm_id), 
-    # line end points (with the osm_id's of their paths)
-    intersection.lines %>% 
-      st_endpoint() %>% st_sf() %>% st_set_geometry("geom") %>%
-      cbind(osm_id = intersection.lines$osm_id)
+    # line start and end points (with the osm_id's of their paths)
+    if (nrow(intersection.lines) > 0) lineEndCoords(st_startpoint(intersection.lines)),
+    if (nrow(intersection.lines) > 0) lineEndCoords(st_endpoint(intersection.lines))
   ) %>%
-  # combine where same location with same osm_id
-    group_by(osm_id, geom) %>%
-    summarise() %>%
-    ungroup()
+    # combine where same location with same osm_id
+    distinct() %>%
+    st_as_sf(coords = c("X", "Y"), crs = st_crs(paths))
 
 
   # temp dev notes (SP): 
@@ -130,27 +149,28 @@ processOsm <- function(osmGpkg, region, regionBufferDist = 10000,
 
   # split paths at intersections with matching osm_ids
   echo(paste("Splitting", nrow(paths), "paths at intersections\n"))
-  split.path.list <- splitPathsAtPoints(paths, intersections, 0.001, "osm_id", maxcores)
-  
-  # convert to dataframe, snap to grid, remove empty geometries, add unique id
-  echo("Combining the split paths into a single dataframe\n")
-  system.time(
-    split.paths <- rbindlist(split.path.list, fill=TRUE) %>% 
-      st_as_sf() %>%
-      st_snap_to_grid(1) %>%
-      # remove empty geometries
-      filter(!st_is_empty(geom)) %>%
-      # add unique id
-      mutate(path_id = row_number())
-  )
+  # snap to grid, remove empty geometries, add unique id
+  split.paths <- splitPathsAtPoints(paths, intersections, 0.001, "osm_id", maxcores) %>%
+    st_snap_to_grid(1) %>%
+    # remove empty geometries
+    filter(!st_is_empty(geom)) %>%
+    # add unique id
+    mutate(path_id = row_number())
   
   # find endpoints of each split path
   echo("Finding endpoints of the split paths\n")
-  endpoints <- c(lwgeom::st_startpoint(split.paths) %>% st_sfc(),
-                 lwgeom::st_endpoint(split.paths) %>% st_sfc()) %>%
+  # coordinates of the first or last point of each path (faster than finding
+  # the start or end points as geometries)
+  endCoords <- function(lines, last = FALSE) {
+    coords <- st_coordinates(lines)
+    coords[!duplicated(coords[, "L1"], fromLast = last), c("X", "Y"), drop = FALSE]
+  }
+  endpoints <- bind_rows(
+    as.data.frame(endCoords(split.paths)),
+    as.data.frame(endCoords(split.paths, last = TRUE))) %>%
     # remove duplicates
-    unique() %>%
-    st_sf() %>%
+    distinct() %>%
+    st_as_sf(coords = c("X", "Y"), crs = st_crs(split.paths)) %>%
     # add unique id and set geometry column name
     mutate(endpoint_id = row_number()) %>%
     st_set_geometry("geom")
@@ -200,16 +220,11 @@ processOsm <- function(osmGpkg, region, regionBufferDist = 10000,
       filter(path_bridge_tunnel == endpoint_bridge_tunnel) %>%
       distinct()
     
-    resplit.path.list <- 
-      splitPathsAtPoints(paths.to.resplit, endpoints.for.resplit, 0.1, "path_id", maxcores)
-    
-    # convert to dataframe, snap to grid, remove empty geometries
-    echo("Combining the resplit paths into a single dataframe\n")
-    system.time(
-      resplit.paths <- bind_rows(resplit.path.list) %>% 
-        st_snap_to_grid(1) %>%
-        filter(!st_is_empty(geom))
-    )
+    # snap to grid, remove empty geometries
+    resplit.paths <-
+      splitPathsAtPoints(paths.to.resplit, endpoints.for.resplit, 0.1, "path_id", maxcores) %>%
+      st_snap_to_grid(1) %>%
+      filter(!st_is_empty(geom))
     
     # remove paths that needed to be resplit, and replace with resplit paths
     combined.paths <- split.paths %>%
@@ -237,31 +252,20 @@ processOsm <- function(osmGpkg, region, regionBufferDist = 10000,
   # finalise paths with metadata
   # -----------------------------------#
   
-  # find from and to id's from endpoints
-  from_ids <- combined.paths %>%
-    dplyr::select(combined_path_id) %>%
-    # take startpoint jeometry, and do spatial join to endpoints
-    st_set_geometry(lwgeom::st_startpoint(.)) %>%
-    st_join(endpoints %>% rename(from_id = endpoint_id),
-            join = st_intersects) %>%
-    st_drop_geometry()
-  
-  to_ids <- combined.paths %>%
-    dplyr::select(combined_path_id) %>%
-    # take endpoint jeometry, and do spatial join to endpoints
-    st_set_geometry(lwgeom::st_endpoint(.)) %>%
-    st_join(endpoints %>% rename(to_id = endpoint_id),
-            join = st_intersects) %>%
-    st_drop_geometry()
+  # find from and to id's from endpoints, matching their coordinates (rather
+  # than a spatial join; all are snapped to the grid, so they match exactly)
+  pointKeys <- function(coords) paste(coords[, "X"], coords[, "Y"])
+  endpoint.keys <- pointKeys(st_coordinates(endpoints))
   
   # assemble final paths with length, from_id and to_id
   final.paths.with.metadata <- combined.paths %>%
     # add length column
     mutate(length = as.integer(st_length(geom))) %>%
-    
-    # join from_id and to_id
-    left_join(from_ids, by = "combined_path_id") %>%
-    left_join(to_ids, by = "combined_path_id")
+  
+    # add from_id and to_id
+    mutate(from_id = endpoints$endpoint_id[match(pointKeys(endCoords(geom)), endpoint.keys)],
+           to_id = endpoints$endpoint_id[match(pointKeys(endCoords(geom, last = TRUE)),
+                                               endpoint.keys)])
     
  
   # nodes
