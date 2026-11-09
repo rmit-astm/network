@@ -16,7 +16,7 @@ test_that("Boundary points are found on every part and hole of a polygon", {
                                                        list(square(1000, 0, 200)))),
                                   st_polygon(list(square(0, 1000, 400), square(150, 1150, 100))),
                                   crs = 7899))
-  points <- boundaryPoints(polygons, 7899, maxcores = 1)
+  points <- boundaryPoints(polygons, 7899)
   xy <- st_coordinates(points)
   
   # a point every 20m: 40 on each part of the park, 80 and 20 on the school
