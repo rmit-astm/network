@@ -69,6 +69,11 @@ Overrides are useful for one-off changes, such as resuming a build from the save
 
 Versions up to v1.2 set the parameters in `NetworkGenerator.R` itself and were run with `makeNetwork(city = "Melbourne")`; config files were introduced in v2.0.
 
+To check a built network, run `calibration-validation/CheckNetwork.R` with its output folder, optionally followed by an earlier build to compare it with and the GTFS feed it was built from. It writes `qa_report.md` to the output folder, covering ids and lengths, the connectivity of each mode, destinations and their entry nodes, how far public transport stops are from their nodes, and bus routes that are much longer than the straight-line distance between their stops:
+```
+Rscript calibration-validation/CheckNetwork.R output/victoria output/v2.1/victoria data/gtfs.zip
+```
+
 ## Using the pipeline for other cities
 
 The pipeline was developed and tested for Melbourne and Bendigo (Victoria, Australia), but is intended to work for other cities that have OpenStreetMap coverage and a GTFS feed. To build a network for another city, add a config file for it in `config` using the existing ones as a template, and check the following. Users outside Australia should pay particular attention to the same points.
