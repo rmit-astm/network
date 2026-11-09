@@ -806,46 +806,56 @@ findNodePairRoutes <- function(stopTimes,
     cores <- length(cluster)
     # stop the cluster if this function exits early with an error
     on.exit(try(stopCluster(cluster), silent = TRUE), add = TRUE)
-    pb <- txtProgressBar(max = max(nrow(nodePairs), 2), style = 3)
+    
+    # one shortest path search from each origin stop to all of its next stops,
+    # with the origins split into a few chunks per core (rather than one task
+    # per pair); paths are the same as searching for each pair separately.
+    # Weights and link ids are looked up once, and paths returned as plain edge
+    # numbers, because doing either through edge sequences (E(g)) for every
+    # search takes most of the time on a large graph
+    weights <- edge_attr(shape.g, "weight")
+    linkIds <- edge_attr(shape.g, "link_id")
+    origins <- unique(nodePairs$stop_id)
+    chunks <- split(origins, cut(seq_along(origins),
+                                 min(length(origins), cores * 4), labels = FALSE))
+    pb <- txtProgressBar(max = max(length(chunks), 2), style = 3)
     progress <- function(n) setTxtProgressBar(pb, n)
     opts <- list(progress = progress)
     
     # report
-    echo(paste("Finding routes for", nrow(nodePairs), "pairs of bus stop nodes;",
-               "parallel processing with", cores, "cores\n"))
+    echo(paste("Finding routes for", nrow(nodePairs), "pairs of bus stop nodes from",
+               length(origins), "origin stops; parallel processing with", cores, "cores\n"))
     
-    # loop to find list of boundary points
-    nodePairRoutes <-
-      foreach(i = 1:nrow(nodePairs),
-              # foreach(i = 21280:21300,
+    chunkRoutes <-
+      foreach(chunk = chunks,
               .combine = rbind,
-              .packages = c("dplyr", "sf", "igraph"),
+              .packages = c("igraph"),
               .options.snow = opts) %dopar% {
                 
-                row <- nodePairs[i, ]
-                
-                shortest <- shortest_paths(shape.g,
-                                           from = as.character(row$stop_id),
-                                           to = as.character(row$next_stop_id),
-                                           mode = "out", 
-                                           output = "epath")
-                
-                if (length(shortest$epath[[1]]) > 0) {
-                  shortest_link_ids <- edge_attr(shape.g, "link_id", shortest$epath[[1]]) %>%
-                    toString()
-                } else {
-                  shortest_link_ids <- NA
-                }
-                
-                output.row <- cbind(row, link_ids = shortest_link_ids) %>%
-                  as.data.frame()
-                
-                return(output.row)
+                igraph_options(return.vs.es = FALSE)
+                do.call(rbind, lapply(chunk, function(origin) {
+                  next_stop_ids <- nodePairs$next_stop_id[nodePairs$stop_id == origin]
+                  shortest <- shortest_paths(shape.g,
+                                             from = as.character(origin),
+                                             to = as.character(next_stop_ids),
+                                             mode = "out",
+                                             weights = weights,
+                                             output = "epath")
+                  link_ids <- vapply(shortest$epath, function(epath) {
+                    if (length(epath) > 0) toString(linkIds[epath]) else NA_character_
+                  }, character(1))
+                  data.frame(stop_id = origin, next_stop_id = next_stop_ids, link_ids = link_ids)
+                }))
               }
     
     # close the progress bar and cluster
     close(pb)
     stopCluster(cluster)
+    
+    # routes in the order of 'nodePairs'
+    nodePairRoutes <- nodePairs %>%
+      left_join(chunkRoutes, by = c("stop_id", "next_stop_id")) %>%
+      as.data.frame()
     
   } else {
     nodePairRoutes <- c()
