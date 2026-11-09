@@ -55,10 +55,13 @@ densifyNetwork <- function(networkList, minimum_length=400, densifyBikeways=F,
 
   # st_write(segment_nodes,"segment_nodes.sqlite",delete_dsn=T)
   
-  links_list <- links_to_segmentize %>% st_geometry()
+  # geometries without their crs: cutting the links is planar either way, but
+  # with a crs, sf looks it up on every call, which takes most of the time
+  links_list <- links_to_segmentize %>% st_geometry() %>% st_set_crs(NA)
   nodes_list <- segment_nodes %>%
     st_buffer(0.001, endCapStyle="SQUARE") %>%
-    st_geometry()
+    st_geometry() %>%
+    st_set_crs(NA)
   
   # cut each link at its segment nodes, in chunks of links in parallel
   cluster <- startCluster(maxcores)
@@ -99,12 +102,10 @@ densifyNetwork <- function(networkList, minimum_length=400, densifyBikeways=F,
               by = c("from_id" = "id")) %>%
     # check whether startpoint of geometry matches from_id ("forward" if yes, "reverse" if no)
     mutate(startpoint = st_coordinates(st_startpoint(geom))) %>%
-    rowwise() %>%
     mutate(direction = 
-             ifelse(startpoint[[1]] == fromx & startpoint[[2]] == fromy, 
+             ifelse(startpoint[, 1] == fromx & startpoint[, 2] == fromy, 
                     "forward", 
-                    "reverse")) %>%
-    ungroup()
+                    "reverse"))
 
   links_segmented <- links_to_segmentize %>%
     st_set_geometry(st_sfc(links_list_segmented)) %>%
@@ -113,23 +114,27 @@ densifyNetwork <- function(networkList, minimum_length=400, densifyBikeways=F,
     st_sf() %>%
     st_cast(to="LINESTRING") %>%
     mutate(new_node_id=row_number()+max(nodes_df$id,na.rm=T)) %>%
-    group_by(group_id) %>%
+    # position of each part within its link, and the link's number of parts
+    # (the parts of a link are in consecutive rows); faster than grouping by
+    # link, as there are many links
+    mutate(part = sequence(rle(group_id)$lengths),
+           parts = rep(rle(group_id)$lengths, rle(group_id)$lengths)) %>%
     # mutate(from_id=ifelse(row_number()!=1,new_node_id-1,from_id)) %>%
     mutate(from_id = case_when(
-      direction == "forward" & row_number() == 1 ~ from_id,
-      direction == "forward" & row_number() != 1 ~ new_node_id-1,
-      direction == "reverse" & row_number() != max(row_number()) ~ new_node_id,
-      direction == "reverse" & row_number() == max(row_number()) ~ from_id
+      direction == "forward" & part == 1 ~ from_id,
+      direction == "forward" & part != 1 ~ new_node_id-1,
+      direction == "reverse" & part != parts ~ new_node_id,
+      direction == "reverse" & part == parts ~ from_id
     )) %>%
     # mutate(to_id=ifelse(row_number()!=max(row_number()),new_node_id,to_id)) %>%
     mutate(to_id = case_when(
-      direction == "forward" & row_number() != max(row_number()) ~ new_node_id,
-      direction == "forward" & row_number() == max(row_number()) ~ to_id,
-      direction == "reverse" & row_number() == 1 ~ to_id,
-      direction == "reverse" & row_number() != 1 ~ new_node_id-1,
+      direction == "forward" & part != parts ~ new_node_id,
+      direction == "forward" & part == parts ~ to_id,
+      direction == "reverse" & part == 1 ~ to_id,
+      direction == "reverse" & part != 1 ~ new_node_id-1,
     )) %>%
     mutate(length=round(as.numeric(st_length(geom)),3)) %>%
-    dplyr::select(-group_id, -new_node_id, -fromx, -fromy, -startpoint)
+    dplyr::select(-group_id, -new_node_id, -fromx, -fromy, -startpoint, -part, -parts)
   
   nodes_segmented_forward <- links_segmented %>%
     filter(direction == "forward") %>%
@@ -156,6 +161,7 @@ densifyNetwork <- function(networkList, minimum_length=400, densifyBikeways=F,
     nodes_segmented %>% st_set_crs(st_crs(nodes_df))
   ) %>%
     st_sf()
+  rownames(nodes_combined) <- NULL
 
   # some coordinates of new links may not exactly match node coordinates due to snapping to grid
   # join the node x and y details to the links
