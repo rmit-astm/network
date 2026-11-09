@@ -1,6 +1,9 @@
 # function to split paths at points within a given distance of the path, 
 # using matching field (such as osm_id) in both paths and points
 
+# returns the split paths as a single dataframe, with a row for each part, in
+# the order of 'paths'
+
 splitPathsAtPoints <- function(paths, points, buff.dist, field, maxcores) {
   
   # paths = paths
@@ -13,79 +16,15 @@ splitPathsAtPoints <- function(paths, points, buff.dist, field, maxcores) {
   # buff.dist = 0.1
   # field = "path_id"
   
-  # run function once if no more than 100k paths, otherwise break into groups
-  if (nrow(paths) <= 100000) {
-    
-    # buffer points to buffer distance
-    echo("Buffering points to split paths\n")
-    buffered.points <- st_buffer(points, buff.dist)
-    
-    # run the loop to split paths at points
-    split.path.list <- splitPathsAtPointsParallelLoop(paths, 
-                                                      buffered.points,
-                                                      field,
-                                                      maxcores)
-    
-  } else {
-    
-    # break larger path sets into groups for speed and memory
-    
-    group.nos <- seq(1:ceiling(nrow(paths) / 100000))  # groups of up to 100000
-    groups <- c()
-    
-    for (i in group.nos) {
-      
-      echo(paste("Splitting group", i, "of", max(group.nos), "groups of paths\n"))
-      
-      # group of paths
-      start.no <- ((group.nos[i] - 1) * 100000) + 1
-      end.no <- min(group.nos[i] * 100000, nrow(paths))
-      group.paths <- paths[start.no:end.no, ]
-      
-      # points used in that group
-      group.points <- points %>% 
-        filter(osm_id %in% group.paths$osm_id)
-      
-      # buffer points to buffer distance
-      echo("Buffering points to split paths\n")
-      group.buffered.points <- st_buffer(group.points, buff.dist)
-
-      # for the group, run the loop to split paths at points
-      group.split.path.list <- 
-        splitPathsAtPointsParallelLoop(group.paths, 
-                                       group.buffered.points,
-                                       field,
-                                       maxcores)
-      
-      # temporarily save output
-      group.output.name <- paste0("split_path_list_", i)
-      saveRDS(group.split.path.list, paste0("./", group.output.name, ".rds"))
-      groups <- c(groups, group.output.name)
-      
-    }
-    
-    # retrieve and assemble temporarily saved outputs
-    split.path.list <- list()
-    for (i in 1:length(groups)) {
-      # read in the RDS and add it to split.path.list
-      rds.path <- paste0("./", groups[i], ".rds")
-      split.path.list <- c(split.path.list, readRDS(rds.path))
-      # delete the RDS
-      unlink(rds.path)
-      
-    }
-
-  }
-
-  return(split.path.list)
+  # coordinates of the points for each path (NULL if none), in the order of
+  # 'paths', so each path only needs its own points
+  coords <- st_coordinates(points)[, c("X", "Y"), drop = FALSE]
+  path.points <- split.data.frame(coords, as.character(points[[field]]))
+  path.points <- unname(path.points[as.character(paths[[field]])])
   
-}
-
-
-splitPathsAtPointsParallelLoop <- function(paths, 
-                                           buffered.points,
-                                           field,
-                                           maxcores) {
+  # path geometries without their crs: the splitting is planar either way, but
+  # with a crs, sf looks it up on every call, which takes most of the time
+  path.geoms <- st_set_crs(st_geometry(paths), NA)
   
   # setup for parallel processing - detect no of available cores and create cluster
   cluster <- startCluster(maxcores)
@@ -93,8 +32,14 @@ splitPathsAtPointsParallelLoop <- function(paths,
   # stop the cluster if this function exits early with an error
   on.exit(try(stopCluster(cluster), silent = TRUE), add = TRUE)
   
+  # split the paths in chunks of paths, rather than one task per path (each
+  # task with only its own paths and points)
+  chunks <- split(seq_along(path.geoms),
+                  cut(seq_along(path.geoms), min(cores * 10, length(path.geoms)),
+                      labels = FALSE))
+  
   # set up progress reporting 
-  pb <- txtProgressBar(max = nrow(paths), style = 3)
+  pb <- txtProgressBar(max = max(length(chunks), 2), style = 3)
   progress <- function(n) setTxtProgressBar(pb, n)
   opts <- list(progress = progress)
   
@@ -102,52 +47,45 @@ splitPathsAtPointsParallelLoop <- function(paths,
   echo(paste("Splitting", nrow(paths), "paths; parallel processing with",
              cores, "cores\n"))
   
-  # loop to split paths
-  split.path.list <-
-    foreach(i = 1:nrow(paths),
-            # foreach(i = 1:10,
-            .packages = c("dplyr", "sf"), 
+  # loop to split paths: the difference between each path and its buffered
+  # points, as a list of the linestring parts of each path
+  split.geoms <-
+    foreach(geoms = lapply(chunks, function(rows) path.geoms[rows]),
+            pts = lapply(chunks, function(rows) path.points[rows]),
+            .combine = c,
+            .packages = c("sf"), 
             .options.snow = opts) %dopar% {
-              
-              path <- paths[i,]
-              
-              # intersections with the same variable field name (say, 'osm_id) as 
-              # path: '.data[[field]]' is the variable field in the current data, 
-              # which is 'buffered points'; 'path[[field]]' is the same field in 'path'
-              
-              path.intersections <- buffered.points %>%
-                filter(.data[[field]] == path[[field]])
-              
-              
-              # split paths at intersections
-              if(nrow(path.intersections) > 0) {
+              lapply(seq_along(geoms), function(i) {
                 
-                path.list <- path %>% st_geometry()
+                # paths with no points are not split
+                if (is.null(pts[[i]])) return(list(geoms[[i]]))
                 
-                path.intersections.list <- path.intersections %>%
-                  # convert to multipoint
-                  summarise() %>%
-                  st_geometry()
+                # split path at its points
+                buffered.points <- st_buffer(st_sfc(st_multipoint(pts[[i]])), buff.dist)
+                split.path <- st_difference(geoms[i], buffered.points)
                 
-                path.list.segmented <- st_difference(path.list, 
-                                                     path.intersections.list)
-                split.path <- path %>%
-                  st_set_geometry(st_sfc(path.list.segmented)) %>%
-                  st_sf() %>%
-                  st_cast(to = "LINESTRING")
-                
-              } else {
-                split.path <- path
-              }
-              
-              return(split.path)
-              
+                # parts of the split path as linestrings
+                split.geom <- split.path[[1]]
+                if (inherits(split.geom, "LINESTRING") && !st_is_empty(split.geom)) {
+                  return(list(split.geom))
+                } else if (inherits(split.geom, "MULTILINESTRING") && !st_is_empty(split.geom)) {
+                  return(lapply(split.geom, st_linestring))
+                } else {
+                  return(as.list(st_geometry(st_cast(st_sf(geom = split.path), to = "LINESTRING"))))
+                }
+              })
             }
   
   # close the progress bar and cluster
   close(pb)
   stopCluster(cluster)
   
-  return(split.path.list)
+  # a row for each part of each path, with the part's geometry
+  split.paths <- paths[rep(seq_len(nrow(paths)), lengths(split.geoms)), ]
+  st_geometry(split.paths) <- st_sfc(unlist(split.geoms, recursive = FALSE),
+                                     crs = st_crs(paths))
+  rownames(split.paths) <- NULL
+  
+  return(split.paths)
   
 }

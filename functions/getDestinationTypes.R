@@ -53,14 +53,18 @@ getPrimary <- function(layer) {
 }
 
 getSecondary <- function(layer) {
+  # some are eg "5-8; 10-12' or '0-4;9' - first, find the grade after the
+  # last hyphen, then find the grade after the last semi=colon (for each
+  # different value of grades, rather than each row, as there are many rows)
+  highestGrade <- function(grades) {
+    highest_grade <- dplyr::last(unlist(strsplit(grades, "-")))
+    dplyr::last(unlist(strsplit(highest_grade, ";")))
+  }
+  all.grades <- unique(layer$grades)
+  highest.grades <- vapply(all.grades, highestGrade, character(1), USE.NAMES = FALSE)
   return(
     layer %>%
-      rowwise() %>%
-      # some are eg "5-8; 10-12' or '0-4;9' - first, find the grade after the 
-      # last hyphen, then find the grade after the last semi=colon
-      mutate(highest_grade = dplyr::last(unlist(strsplit(grades, "-")))) %>%  
-      mutate(highest_grade = dplyr::last(unlist(strsplit(highest_grade, ";")))) %>%
-      ungroup() %>%
+      mutate(highest_grade = highest.grades[match(grades, all.grades)]) %>%
       filter(amenity == "school" & 
                (as.numeric(highest_grade) >= 7 | 
                   school %in% c("secondary", "primary;secondary") |

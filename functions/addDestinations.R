@@ -267,55 +267,8 @@ addDestinations <- function(nodes_current,
     as.numeric(st_distance(points, st_geometry(links)[nearest], by_element = TRUE)) <= dist
   }
   
-  # setup for parallel processing and progress reporting
-  cluster <- startCluster(maxcores)
-  cores <- length(cluster)
-  # stop the cluster if this function exits early with an error
-  on.exit(try(stopCluster(cluster), silent = TRUE), add = TRUE)
-  pb <- txtProgressBar(max = nrow(dest.large.poly), style = 3)
-  progress <- function(n) setTxtProgressBar(pb, n)
-  opts <- list(progress = progress)
-  
-  # report
-  echo(paste("Finding boundary points for", nrow(dest.large.poly), 
-             "parks and schools; parallel processing with", cores, "cores\n"))
-  
-  # loop to find list of boundary points
-  boundary.points <-
-    foreach(i = 1:nrow(dest.large.poly),
-            # foreach(i = 1:8,
-            # .combine = rbind,
-            .packages = c("dplyr", "sf"),
-            .options.snow = opts) %dopar% {
-              
-              dest <- dest.large.poly[i,]
-              
-              dest.boundary.points <- dest %>% 
-                # convert destination polygons boundaries to linestring
-                st_cast(to = "MULTILINESTRING") %>%
-                st_cast(to = "LINESTRING") %>%
-                # locate points at 20m along boundaries
-                st_line_sample(., density = units::set_units(20, m))
-              
-              return(dest.boundary.points)
-            }
-  
-  # close the progress bar and cluster
-  close(pb)
-  stopCluster(cluster)
-  
-  # convert the list of boundary points into a dataframe
-  # extract coordinates and ids (row numbers, corresponding to dest.large.poly rows)
-  coordinates <- lapply(boundary.points, function(x) st_coordinates(x[[1]]))
-  ids <- seq_along(boundary.points)
-  # make dataframe of ids and x and y coordinates
-  boundary.df <- data.frame(
-    id = rep(ids, sapply(coordinates, nrow)),
-    x = unlist(lapply(coordinates, function(x) x[,1])),
-    y = unlist(lapply(coordinates, function(x) x[,2])))
-  # convert to sf object
-  boundary.sf <- st_as_sf(boundary.df, coords = c("x", "y")) %>%
-    st_set_crs(outputCrs)
+  # points along the boundaries of the parks and schools
+  boundary.sf <- boundaryPoints(dest.large.poly, outputCrs)
   
   # pseudo entry points with nodes
   pseudo.entry.nodes.cycle <- boundary.sf %>%
@@ -390,3 +343,36 @@ addDestinations <- function(nodes_current,
   
 }
 
+# points every 20m along the boundaries of polygons (all the boundaries of
+# each polygon: each part, and any holes), with the row number of their
+# polygon ('id')
+boundaryPoints <- function(polygons, outputCrs) {
+  
+  # report
+  echo(paste("Finding boundary points for", nrow(polygons), "parks and schools\n"))
+  
+  # boundaries of all the polygons as linestrings, with the row number of their
+  # polygon (all the polygons at once, rather than in a loop over polygons)
+  boundaries <- polygons %>%
+    st_geometry() %>%
+    # convert destination polygons boundaries to linestring
+    st_cast(to = "MULTILINESTRING") %>%
+    st_cast(to = "LINESTRING")
+  boundary.ids <- rep(seq_len(nrow(polygons)), attr(boundaries, "ids"))
+  
+  # locate points at 20m along boundaries
+  boundary.points <- st_line_sample(boundaries, density = units::set_units(20, m))
+  
+  # make dataframe of ids (row numbers, corresponding to polygons rows) and x
+  # and y coordinates
+  coordinates <- st_coordinates(boundary.points)
+  boundary.df <- data.frame(
+    id = boundary.ids[coordinates[, "L1"]],
+    x = coordinates[, "X"],
+    y = coordinates[, "Y"])
+  # convert to sf object
+  boundary.sf <- st_as_sf(boundary.df, coords = c("x", "y")) %>%
+    st_set_crs(outputCrs)
+  
+  return(boundary.sf)
+}

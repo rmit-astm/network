@@ -421,19 +421,25 @@ exportGtfsSchedule <- function(links,
   # if routing buses on road, then find routes between pairs of nodes along the routes
   # note - 'shape.links' will not be NA if onroadBus=T and there are gtfs shapes
   if (onroadBusRouting) {
+    # all driveable links, for pairs whose route on the shape links is much
+    # longer than the shortest car route, or can't be found
+    car.links <- links %>% filter(is_car == 1)
+    
     system.time(nodePairRoutes <- findNodePairRoutes(stopTimes, 
                                                      trips, 
                                                      routes, 
                                                      shape.links,
                                                      existingNodePairs = NA,
-                                                     maxcores))
+                                                     maxcores,
+                                                     car.links = car.links))
     
     system.time(unroutedStopOutputs <- removeUnroutedStops(stopTimes, 
                                                            trips,
                                                            routes,
                                                            shape.links,
                                                            nodePairRoutes,
-                                                           maxcores))
+                                                           maxcores,
+                                                           car.links = car.links))
     stopTimes <- unroutedStopOutputs[[1]]
     nodePairRoutes <- unroutedStopOutputs[[2]]
     
@@ -764,7 +770,8 @@ findNodePairRoutes <- function(stopTimes,
                                routes, 
                                shape.links,
                                existingNodePairs = NA,
-                               maxcores) {
+                               maxcores,
+                               car.links = NA) {
   
   nodePairs <- stopTimes %>%
     # filter to bus
@@ -806,46 +813,63 @@ findNodePairRoutes <- function(stopTimes,
     cores <- length(cluster)
     # stop the cluster if this function exits early with an error
     on.exit(try(stopCluster(cluster), silent = TRUE), add = TRUE)
-    pb <- txtProgressBar(max = max(nrow(nodePairs), 2), style = 3)
+    
+    # one shortest path search from each origin stop to all of its next stops,
+    # with the origins split into a few chunks per core (rather than one task
+    # per pair); paths are the same as searching for each pair separately.
+    # Weights and link ids are looked up once, and paths returned as plain edge
+    # numbers, because doing either through edge sequences (E(g)) for every
+    # search takes most of the time on a large graph
+    weights <- edge_attr(shape.g, "weight")
+    linkIds <- edge_attr(shape.g, "link_id")
+    origins <- unique(nodePairs$stop_id)
+    chunks <- split(origins, cut(seq_along(origins),
+                                 min(length(origins), cores * 4), labels = FALSE))
+    pb <- txtProgressBar(max = max(length(chunks), 2), style = 3)
     progress <- function(n) setTxtProgressBar(pb, n)
     opts <- list(progress = progress)
     
     # report
-    echo(paste("Finding routes for", nrow(nodePairs), "pairs of bus stop nodes;",
-               "parallel processing with", cores, "cores\n"))
+    echo(paste("Finding routes for", nrow(nodePairs), "pairs of bus stop nodes from",
+               length(origins), "origin stops; parallel processing with", cores, "cores\n"))
     
-    # loop to find list of boundary points
-    nodePairRoutes <-
-      foreach(i = 1:nrow(nodePairs),
-              # foreach(i = 21280:21300,
+    chunkRoutes <-
+      foreach(chunk = chunks,
               .combine = rbind,
-              .packages = c("dplyr", "sf", "igraph"),
+              .packages = c("igraph"),
               .options.snow = opts) %dopar% {
                 
-                row <- nodePairs[i, ]
-                
-                shortest <- shortest_paths(shape.g,
-                                           from = as.character(row$stop_id),
-                                           to = as.character(row$next_stop_id),
-                                           mode = "out", 
-                                           output = "epath")
-                
-                if (length(shortest$epath[[1]]) > 0) {
-                  shortest_link_ids <- edge_attr(shape.g, "link_id", shortest$epath[[1]]) %>%
-                    toString()
-                } else {
-                  shortest_link_ids <- NA
-                }
-                
-                output.row <- cbind(row, link_ids = shortest_link_ids) %>%
-                  as.data.frame()
-                
-                return(output.row)
+                igraph_options(return.vs.es = FALSE)
+                do.call(rbind, lapply(chunk, function(origin) {
+                  next_stop_ids <- nodePairs$next_stop_id[nodePairs$stop_id == origin]
+                  shortest <- shortest_paths(shape.g,
+                                             from = as.character(origin),
+                                             to = as.character(next_stop_ids),
+                                             mode = "out",
+                                             weights = weights,
+                                             output = "epath")
+                  link_ids <- vapply(shortest$epath, function(epath) {
+                    if (length(epath) > 0) toString(linkIds[epath]) else NA_character_
+                  }, character(1))
+                  route_length <- vapply(shortest$epath, function(epath) sum(weights[epath]), numeric(1))
+                  data.frame(stop_id = origin, next_stop_id = next_stop_ids, link_ids = link_ids,
+                             route_length = route_length)
+                }))
               }
     
     # close the progress bar and cluster
     close(pb)
     stopCluster(cluster)
+    
+    # routes in the order of 'nodePairs'
+    nodePairRoutes <- nodePairs %>%
+      left_join(chunkRoutes, by = c("stop_id", "next_stop_id")) %>%
+      as.data.frame()
+    
+    if (!is.na(car.links)[1]) {
+      nodePairRoutes <- useCarRoutes(nodePairRoutes, stopTimes, car.links)
+    }
+    nodePairRoutes <- nodePairRoutes %>% dplyr::select(-route_length)
     
   } else {
     nodePairRoutes <- c()
@@ -855,13 +879,75 @@ findNodePairRoutes <- function(stopTimes,
   
 }
 
+# function to replace the routes between pairs of bus stop nodes that are much
+# longer than the shortest route on all car links (more than 1.5 times and 200m
+# longer), or that weren't found, with the shortest car route. These are where a
+# road the bus uses was left out of the shape links (eg because one of its nodes
+# is just over 100m from the shape), so the route detours along other bus roads.
+# The car route can't be shorter than the straight line between the nodes, so it
+# is only found for pairs whose route is much longer than that
+useCarRoutes <- function(nodePairRoutes, stopTimes, car.links) {
+  
+  stopCoords <- stopTimes %>% distinct(stop_id, .keep_all = TRUE)
+  from <- match(nodePairRoutes$stop_id, stopCoords$stop_id)
+  to <- match(nodePairRoutes$next_stop_id, stopCoords$stop_id)
+  straight <- sqrt((stopCoords$x[from] - stopCoords$x[to])^2 +
+                     (stopCoords$y[from] - stopCoords$y[to])^2)
+  suspect <- which(is.na(nodePairRoutes$link_ids) |
+                     (nodePairRoutes$route_length > 1.5 * straight &
+                        nodePairRoutes$route_length - straight > 200))
+  
+  # directed graph of car links
+  car.g <- graph_from_data_frame(car.links %>%
+                                   st_drop_geometry() %>%
+                                   dplyr::select(from_id, to_id, weight = length, link_id),
+                                 directed = T)
+  weights <- edge_attr(car.g, "weight")
+  linkIds <- edge_attr(car.g, "link_id")
+  suspect <- suspect[as.character(nodePairRoutes$stop_id[suspect]) %in% V(car.g)$name &
+                       as.character(nodePairRoutes$next_stop_id[suspect]) %in% V(car.g)$name]
+  
+  echo(paste("Finding car routes for", length(suspect), "pairs of bus stop nodes with long or no routes\n"))
+  
+  # edge numbers rather than edge sequences, as in 'findNodePairRoutes'
+  old.options <- igraph_options(return.vs.es = FALSE)
+  on.exit(igraph_options(old.options), add = TRUE)
+  replaced <- c()
+  for (origin in unique(nodePairRoutes$stop_id[suspect])) {
+    rows <- suspect[nodePairRoutes$stop_id[suspect] == origin]
+    shortest <- suppressWarnings(shortest_paths(car.g,
+                                                from = as.character(origin),
+                                                to = as.character(nodePairRoutes$next_stop_id[rows]),
+                                                mode = "out",
+                                                weights = weights,
+                                                output = "epath"))
+    for (i in seq_along(rows)) {
+      epath <- shortest$epath[[i]]
+      if (length(epath) == 0) next
+      car_length <- sum(weights[epath])
+      route_length <- nodePairRoutes$route_length[rows[i]]
+      if (is.na(nodePairRoutes$link_ids[rows[i]]) |
+          (route_length > 1.5 * car_length & route_length - car_length > 200)) {
+        nodePairRoutes$link_ids[rows[i]] <- toString(linkIds[epath])
+        nodePairRoutes$route_length[rows[i]] <- car_length
+        replaced <- c(replaced, rows[i])
+      }
+    }
+  }
+  
+  echo(paste("Using car routes for", length(replaced), "pairs of bus stop nodes\n"))
+  
+  return(nodePairRoutes)
+}
+
 # function to remove unrouted bus stops from stopTimes - only used where onroadBus = T
 removeUnroutedStops <- function(stopTimes,
                                 trips,
                                 routes,
                                 shape.links,
                                 nodePairRoutes,
-                                maxcores) {
+                                maxcores,
+                                car.links = NA) {
   
   # find missing pair routes
   missingPairRoutes <- nodePairRoutes %>% filter(is.na(link_ids))
@@ -911,7 +997,8 @@ removeUnroutedStops <- function(stopTimes,
                                        routes,
                                        shape.links,
                                        existingNodePairs = nodePairRoutes,
-                                       maxcores)
+                                       maxcores,
+                                       car.links = car.links)
     
     # add new pairs to output, and recalculate missing pair routes
     nodePairRoutes <- rbind(nodePairRoutes, newNodePairs)
